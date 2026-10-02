@@ -24,7 +24,7 @@ coverage](https://codecov.io/gh/inbo/sbsampling/branch/main/graph/badge.svg)](ht
 [![extendr](https://img.shields.io/badge/extendr-%5E0.8.1-276DC2)](https://extendr.rs/extendr/extendr_api/)
 <!-- badges: end -->
 
-# sbsampling: Sequence-Based Spatially Balanced Sampling on the Sphere
+# sbsampling: Sequence-Based Spatially Balanced Sampling on the Sphere <a href="https://inbo.github.io/sbsampling"><img src="man/figures/logo.png" align="right" height="139" alt="sbsampling website" /></a>
 
 [Van Calster, Hans](mailto:hans.vancalster%40inbo.be)[^1]
 

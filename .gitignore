@@ -34,6 +34,8 @@ inst/doc
 libs
 output
 renv/library
+sbsampling_logo.svg
+sbsampling_logo.png
 src/Makevars
 src/Makevars.win
 src/rust/vendor
