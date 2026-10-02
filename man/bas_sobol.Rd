@@ -53,7 +53,7 @@ projected onto the study area via an area-equal coordinate transform,
 so that equal fractions of the sequence correspond to equal surface areas on
 the sphere.
 
-Unlike \code{\link[=h3_grts]{h3_grts()}}, this function requires no H3 discretisation step and
+Unlike \code{\link[=grts_h3]{grts_h3()}}, this function requires no H3 discretisation step and
 therefore scales to very large study areas without memory pressure.
 H3 cell indices can be obtained afterwards using \code{\link[h3o:h3_from_xy]{h3o::h3_from_xy()}} if
 needed.

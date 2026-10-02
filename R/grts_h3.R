@@ -67,7 +67,7 @@
 #' study_area <- nc[1, ] |> st_geometry() |> st_as_binary(EWKB = FALSE)
 #'
 #' # Draw a sample of 25 points at resolution 7
-#' sample_df <- h3_grts(
+#' sample_df <- grts_h3(
 #'   wkb = study_area[[1]],
 #'   n = 25,
 #'   resolution = 7,
@@ -83,7 +83,7 @@
 #' plot(st_geometry(nc[1,]), main = "H3-GRTS Sample (Ashe County)")
 #' plot(st_geometry(sample_df), add = TRUE, pch = 20, col = "red")
 #' }
-h3_grts <- function(
+grts_h3 <- function(
   wkb,
   cells,
   n,

@@ -162,7 +162,7 @@ text(
 
 ### Sample from the H3 discrete global grid system
 
-We draw a spatially balanced sample with the aid of `h3_grts()` at
+We draw a spatially balanced sample with the aid of `grts_h3()` at
 resolution 7 of the [H3
 resolutions](https://h3geo.org/docs/core-library/restable/) system. This
 corresponds to hexagonal areas of approximately 5.16 km². The `h3o`
@@ -170,7 +170,7 @@ package can be used to, among other things, obtain the hexagon centroid
 or vertices.
 
 ``` r
-h3_sample <- h3_grts(
+h3_sample <- grts_h3(
   wkb = ashe_wkb,
   n = 20,
   resolution = 7,

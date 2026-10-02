@@ -1,4 +1,4 @@
-# test-h3_grts-equivalence.R
+# test-grts_h3-equivalence.R
 # Tests for equivalence between the
 # WKB and pre-computed cells input pathways.
 
@@ -13,7 +13,7 @@ test_that("WKB and cells pathways produce identical samples", {
   res <- 5
   seed <- 123
 
-  out_wkb <- h3_grts(
+  out_wkb <- grts_h3(
     wkb         = wkb,
     n           = n,
     resolution  = res,
@@ -26,7 +26,7 @@ test_that("WKB and cells pathways produce identical samples", {
     resolution  = res,
     containment = "centroid"
   )
-  out_cells <- h3_grts(
+  out_cells <- grts_h3(
     cells = coverage_bytes,
     n     = n,
     seed  = seed
@@ -50,14 +50,14 @@ test_that("cells pathway: sort keys for shared cells match the WKB pathway", {
   wkb  <- create_test_wkb()
   seed <- 42
 
-  out_wkb <- h3_grts(
+  out_wkb <- grts_h3(
     wkb, n = 5, resolution = 4,
     containment = "centroid", seed = seed
   )
   coverage_bytes <- h3_get_coverage(
     wkb, resolution = 4, containment = "centroid"
   )
-  out_cells <- h3_grts(cells = coverage_bytes, n = 5, seed = seed)
+  out_cells <- grts_h3(cells = coverage_bytes, n = 5, seed = seed)
 
   shared <- intersect(out_wkb$cell, out_cells$cell)
 
@@ -70,43 +70,43 @@ test_that("cells pathway: sort keys for shared cells match the WKB pathway", {
 # 3. Input validation (dispatch and type checks on R side)
 # ---------------------------------------------------------------------------
 
-test_that("h3_grts errors when neither wkb nor cells is provided", {
+test_that("grts_h3 errors when neither wkb nor cells is provided", {
   expect_error(
-    h3_grts(n = 5, seed = 42),
+    grts_h3(n = 5, seed = 42),
     "Either 'wkb' or 'cells' must be provided"
   )
 })
 
-test_that("h3_grts errors when cells is a character vector instead of raw", {
+test_that("grts_h3 errors when cells is a character vector instead of raw", {
   expect_error(
-    h3_grts(cells = c("842a993ffffffff"), n = 5, seed = 42),
+    grts_h3(cells = c("842a993ffffffff"), n = 5, seed = 42),
     "must be a raw byte vector"
   )
 })
 
-test_that("h3_grts errors for invalid resolution", {
+test_that("grts_h3 errors for invalid resolution", {
   skip_if_not_installed("sf")
-  expect_error(h3_grts(create_test_wkb(), n = 3, resolution = -1, seed = 42))
-  expect_error(h3_grts(create_test_wkb(), n = 3, resolution = 16, seed = 42))
+  expect_error(grts_h3(create_test_wkb(), n = 3, resolution = -1, seed = 42))
+  expect_error(grts_h3(create_test_wkb(), n = 3, resolution = 16, seed = 42))
 })
 
-test_that("h3_grts errors for invalid containment mode", {
+test_that("grts_h3 errors for invalid containment mode", {
   skip_if_not_installed("sf")
   expect_error(
-    h3_grts(create_test_wkb(), n = 3, containment = "overlap", seed = 42),
+    grts_h3(create_test_wkb(), n = 3, containment = "overlap", seed = 42),
     "should be one of"
   )
 })
 
-test_that("h3_grts containment ordering: intersect >= centroid cells", {
+test_that("grts_h3 containment ordering: intersect >= centroid cells", {
   skip_if_not_installed("sf")
   wkb <- create_test_wkb()
   n_intersect <- attr(
-    h3_grts(wkb, n = 1, resolution = 4, containment = "intersect", seed = 42),
+    grts_h3(wkb, n = 1, resolution = 4, containment = "intersect", seed = 42),
     "n_cells"
   )
   n_centroid <- attr(
-    h3_grts(wkb, n = 1, resolution = 4, containment = "centroid", seed = 42),
+    grts_h3(wkb, n = 1, resolution = 4, containment = "centroid", seed = 42),
     "n_cells"
   )
   expect_gte(n_intersect, n_centroid)

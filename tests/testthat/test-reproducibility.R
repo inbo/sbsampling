@@ -9,7 +9,7 @@
 test_that("output is strictly portable across OS architectures", {
   skip_if_not_installed("sf")
   test_wkb <- create_test_wkb()
-  h3_grts_out <- h3_grts(
+  grts_h3_out <- grts_h3(
     wkb         = test_wkb,
     n           = 5,
     resolution  = 4,
@@ -18,7 +18,7 @@ test_that("output is strictly portable across OS architectures", {
   )
   # style = "serialize" captures exact binary equivalence including column
   # types, float bit patterns, and attribute values.
-  expect_snapshot_value(h3_grts_out, style = "serialize")
+  expect_snapshot_value(grts_h3_out, style = "serialize")
 
   grts_sobol_out <- grts_sobol(
     wkb         = test_wkb,
@@ -42,12 +42,12 @@ test_that("output is strictly portable across OS architectures", {
 test_that("same seed produces identical results across calls", {
   skip_if_not_installed("sf")
   wkb <- create_test_wkb()
-  r1 <- h3_grts(wkb, n = 5, resolution = 4, seed = 42)
-  r2 <- h3_grts(wkb, n = 5, resolution = 4, seed = 42)
+  r1 <- grts_h3(wkb, n = 5, resolution = 4, seed = 42)
+  r2 <- grts_h3(wkb, n = 5, resolution = 4, seed = 42)
   expect_equal(r1, r2)
 
-  r1 <- h3_grts(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
-  r2 <- h3_grts(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
+  r1 <- grts_h3(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
+  r2 <- grts_h3(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
   expect_equal(r1, r2)
 
   r1 <- grts_sobol(wkb, n = 5, seed = 42)
@@ -62,12 +62,12 @@ test_that("same seed produces identical results across calls", {
 test_that("different seeds produce different selections", {
   skip_if_not_installed("sf")
   wkb <- create_test_wkb()
-  r1 <- h3_grts(wkb, n = 5, resolution = 4, seed = 1)
-  r2 <- h3_grts(wkb, n = 5, resolution = 4, seed = 2)
+  r1 <- grts_h3(wkb, n = 5, resolution = 4, seed = 1)
+  r2 <- grts_h3(wkb, n = 5, resolution = 4, seed = 2)
   expect_false(identical(r1$cell, r2$cell))
 
-  r1 <- h3_grts(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 7)
-  r2 <- h3_grts(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 8)
+  r1 <- grts_h3(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 7)
+  r2 <- grts_h3(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 8)
   expect_false(identical(r1$cell, r2$cell))
 
   r1 <- grts_sobol(wkb, n = 5, seed = 1)

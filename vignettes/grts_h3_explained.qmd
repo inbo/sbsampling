@@ -68,7 +68,7 @@ At each level, it uses a random number generator seeded by a combination of two 
 Because this process for a single H3 cell index is a small, deterministic (conditional on the chosen global seed and H3 resolution) mathematical calculation, it can be executed entirely in the CPU cache, streaming H3 cells at high speed.
 This completely bypasses the need for massive RAM allocations or large database files on disk.
 
-If two researchers run `h3_grts()` on overlapping but different study areas using the same seed, the cells in the overlapping region will receive the exact same sort keys in both studies, ensuring perfect reproducibility with a zero-storage footprint.
+If two researchers run `grts_h3()` on overlapping but different study areas using the same seed, the cells in the overlapping region will receive the exact same sort keys in both studies, ensuring perfect reproducibility with a zero-storage footprint.
 
 ## Example: from H3 cell to GRTS sort index
 
@@ -113,7 +113,7 @@ Our cell's new, randomized address is: **Base 85 &rarr; Resolution 1: 5 &rarr; R
 If we created a sorting number using the top-down order (Base Cell first), our sample would still be geographically clustered.
 All cells within Base Cell 20 would remain grouped together numerically.
 
-To force the sample to spread evenly across the study area, `sbsampling::h3_grts()` applies **reverse hierarchical ordering** directly at the bit level.
+To force the sample to spread evenly across the study area, `sbsampling::grts_h3()` applies **reverse hierarchical ordering** directly at the bit level.
 It packs the newly shuffled digits into a brand new 64-bit integer, but it builds it from the ground up:
 
 * **Bits 0-6:** The newly shuffled Base Cell (`85`) is placed at the very bottom (the least significant bits).
@@ -143,7 +143,7 @@ While H3 strives for uniformity, the cells are not perfect equal-area hexagons e
 For a given resolution, cell areas can differ by a factor of two - in practice, this will often be much smaller if the region of interest is restricted (say, a country).
 
 For statistical inference, we can either take the varying cell areas into account at the estimation stage or at the sample selection stage.
-For the latter approach, `sbsampling::h3_grts()` has an argument `area_correction`.
+For the latter approach, `sbsampling::grts_h3()` has an argument `area_correction`.
 When set to `TRUE`, it adjusts the inclusion probabilities of the cells so that they are sampled with probability proportional to their size (PPS).
 An efficient Order Sampling technique (similar to Sequential Poisson Sampling) is used (Rosén 1997, Ohlsson 1998).
 For each cell, the algorithm divides its spatially balanced GRTS sort key (which acts as a uniform random variable) by its true physical area to calculate an "effective key".

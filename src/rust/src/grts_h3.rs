@@ -104,7 +104,7 @@ pub fn h3_coverage(wkb_bytes: &[u8], res: i32, containment: &str) -> extendr_api
 /// Generate a GRTS sample (Internal C-ABI function)
 ///
 /// Geometry -> Coverage -> Sample
-/// This function is wrapped by `h3_grts()` in R and should not be
+/// This function is wrapped by `grts_h3()` in R and should not be
 /// called directly by the user.
 /// Generate a GRTS (Generalized Random Tessellation Stratified) sample of H3
 /// cell indices covering a polygon.

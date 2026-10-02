@@ -45,7 +45,7 @@ h3_coverage <- function(wkb_bytes, res, containment) .Call(wrap__h3_coverage, wk
 #' Generate a GRTS sample (Internal C-ABI function)
 #'
 #' Geometry -> Coverage -> Sample
-#' This function is wrapped by `h3_grts()` in R and should not be
+#' This function is wrapped by `grts_h3()` in R and should not be
 #' called directly by the user.
 #' Generate a GRTS (Generalized Random Tessellation Stratified) sample of H3
 #' cell indices covering a polygon.

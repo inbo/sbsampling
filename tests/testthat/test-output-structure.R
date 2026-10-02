@@ -7,7 +7,7 @@
 
 test_that("sampler returns a data.frame with correct columns", {
   skip_if_not_installed("sf")
-  result <- h3_grts(create_test_wkb(), n = 5, resolution = 4, seed = 42)
+  result <- grts_h3(create_test_wkb(), n = 5, resolution = 4, seed = 42)
   expect_s3_class(result, "data.frame")
   expect_equal(
     names(result),
@@ -75,25 +75,25 @@ test_that("sampler returns a data.frame with correct columns", {
 
 test_that("attribute containment echoes the input argument", {
   skip_if_not_installed("sf")
-  result <- h3_grts(create_test_wkb(), n = 5, resolution = 4,
+  result <- grts_h3(create_test_wkb(), n = 5, resolution = 4,
                     containment = "centroid", seed = 42)
   expect_equal(attr(result, "containment"), "centroid")
 })
 
 test_that("area_correction attribute is FALSE by default", {
   skip_if_not_installed("sf")
-  result <- h3_grts(create_test_wkb(), n = 5, resolution = 4, seed = 42)
+  result <- grts_h3(create_test_wkb(), n = 5, resolution = 4, seed = 42)
   expect_false(attr(result, "area_correction"))
 })
 
 test_that("n_cells >= n", {
   skip_if_not_installed("sf")
-  result <- h3_grts(create_test_wkb(), n = 5, resolution = 4, seed = 42)
+  result <- grts_h3(create_test_wkb(), n = 5, resolution = 4, seed = 42)
   expect_gte(attr(result, "n_cells"), 5L)
 })
 
 test_that("sum_area_m2 is positive", {
   skip_if_not_installed("sf")
-  result <- h3_grts(create_test_wkb(), n = 5, resolution = 4, seed = 42)
+  result <- grts_h3(create_test_wkb(), n = 5, resolution = 4, seed = 42)
   expect_gt(attr(result, "sum_area_m2"), 0)
 })

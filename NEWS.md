@@ -2,7 +2,7 @@
 
 * Added `h3_get_coverage()` to pre-compute H3 cell indices covering an input
   geometry.
-* Added `h3_grts()` for spatially balanced sampling from H3 discrete global
+* Added `grts_h3()` for spatially balanced sampling from H3 discrete global
   grid.
 * Added a `NEWS.md` file to track changes to the package.
 * Add [`checklist`](https://inbo.github.io/checklist/) infrastructure.

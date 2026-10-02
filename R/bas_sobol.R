@@ -8,7 +8,7 @@
 #' so that equal fractions of the sequence correspond to equal surface areas on
 #' the sphere.
 #'
-#' Unlike [h3_grts()], this function requires no H3 discretisation step and
+#' Unlike [grts_h3()], this function requires no H3 discretisation step and
 #' therefore scales to very large study areas without memory pressure.
 #' H3 cell indices can be obtained afterwards using [h3o::h3_from_xy()] if
 #' needed.
