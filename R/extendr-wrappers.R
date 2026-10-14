@@ -5,39 +5,6 @@
 #' @useDynLib sbsampling, .registration = TRUE
 NULL
 
-#' Generate a spatially-balanced BAS-like sample from a WKB polygon.
-#'
-#' Uses a 2-D Owen-scrambled Sobol sequence (Joe–Kuo direction numbers, Burley
-#' 2020 / Vegdahl 2021 scramble) with an area-equal latitude transform.
-#'
-#' # Arguments
-#' * `wkb_bytes` – WKB-encoded POLYGON or MULTIPOLYGON (WGS-84 decimal
-#'                 degrees).
-#' * `n`         – Desired sample size.
-#' * `seed`      – Reproducibility seed (f64 from R; values ≤ 2^53 are
-#'                 losslessly round-tripped through f64).
-#' * `seed`      – Reproducibility seed (f64 from R; values ≤ 2^53 are
-#'                 losslessly round-tripped through f64).
-#'
-#' # Returns
-#' A `data.frame` with columns:
-#' * `lon`         – Longitude (WGS-84 decimal degrees).
-#' * `lat`         – Latitude  (WGS-84 decimal degrees).
-#' * `master_bbox` – Numeric vector c(xmin, ymin, xmax, ymax) (WGS-84 decimal degrees).
-#'
-#' Attributes:
-#' * `seed`          – The seed used (as f64).
-#' * `n`             – Requested sample size.
-#' * `sequence_bbox` – Numeric vector c(xmin, ymin, xmax, ymax) (master bounding box or polygon bounding box).
-#' * `sobol_scanned` – Total Sobol indices evaluated (accepted + rejected).
-#' * `fill_ratio`    – n / sobol_scanned  (bbox → polygon acceptance rate).
-#'
-#' # Prefix stability
-#' Calling with the same `seed` and `n2 > n1` returns a data frame whose
-#' first `n1` rows are identical to the `n1`-row result.
-#' @noRd
-bas_sample_from_wkb <- function(wkb_bytes, n, seed, master_bbox) .Call(wrap__bas_sample_from_wkb, wkb_bytes, n, seed, master_bbox)
-
 #' geometry -> coverage
 #' @noRd
 h3_coverage <- function(wkb_bytes, res, containment) .Call(wrap__h3_coverage, wkb_bytes, res, containment)
@@ -95,6 +62,6 @@ grts_sample_from_wkb <- function(wkb_bytes, res, containment, n, global_seed, ar
 #' @noRd
 grts_sample_from_cells <- function(cells_bytes, n, global_seed, area_correction) .Call(wrap__grts_sample_from_cells, cells_bytes, n, global_seed, area_correction)
 
-grts_sobol_sample_from_wkb <- function(wkb_bytes, n, seed) .Call(wrap__grts_sobol_sample_from_wkb, wkb_bytes, n, seed)
+sobol_sample_from_wkb <- function(wkb_bytes, n, seed, master_bbox, algorithm) .Call(wrap__sobol_sample_from_wkb, wkb_bytes, n, seed, master_bbox, algorithm)
 
 # nolint end

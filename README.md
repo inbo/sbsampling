@@ -109,7 +109,9 @@ Drawing a sample using the Sobol sequence-based balanced acceptance
 sampling algorithm:
 
 ``` r
-bas_sample <- bas_sobol(wkb = ashe_wkb, n = 20, seed = 456)
+bas_sample <- sobol_sample(
+  wkb = ashe_wkb, n = 20, seed = 456, algorithm = "acceptance"
+)
 bas_sample_sf <- sf::st_as_sf(bas_sample, coords = c("lon", "lat"), crs = 4326)
 ```
 
@@ -124,7 +126,7 @@ coords <- sf::st_coordinates(bas_sample_sf)
 text(
   x = coords[, 1], 
   y = coords[, 2], 
-  labels = bas_sample_sf$sobol_index, 
+  labels = bas_sample_sf$rank, 
   pos = 3,
   cex = 0.8
 )
@@ -132,18 +134,22 @@ text(
 
 <img src="man/figures/readme-plot-bas-1.png" alt="" width="100%" />
 
-Alternatively, we can use the Sobol-sequence based GRTS algorithm:
+Alternatively, we can use the Sobol-sequence based GRTS-like algorithm,
+which uses exact area-routing of the randomized sequence inside the
+`wkb` geometry:
 
 ``` r
-grts_sample <- grts_sobol(wkb = ashe_wkb, n = 20, seed = 789)
+grts_sample <- sobol_sample(
+  wkb = ashe_wkb, n = 20, seed = 789, algorithm = "routing"
+)
 grts_sample_sf <- sf::st_as_sf(
   grts_sample, coords = c("lon", "lat"), crs = 4326
 )
 ```
 
-Visualizing the sample: note that the `grts_rank` has no gaps because
-the adapted GRTS algorithm maps the sequence directly inside the
-geometry’s exact area.
+Visualizing the sample: note that the `rank` has no gaps because the
+adapted GRTS algorithm maps the sequence directly inside the geometry’s
+exact area.
 
 ``` r
 plot(ashe$`_ogr_geometry_`)
@@ -152,7 +158,7 @@ coords <- sf::st_coordinates(grts_sample_sf)
 text(
   x = coords[, 1], 
   y = coords[, 2], 
-  labels = grts_sample_sf$grts_rank, 
+  labels = grts_sample_sf$rank, 
   pos = 3,
   cex = 0.8
 )

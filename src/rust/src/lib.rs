@@ -1,9 +1,8 @@
 #![recursion_limit = "256"]
 use extendr_api::prelude::*;
 
-mod bas;
 mod grts_h3;
-mod grts_sobol;
+mod sobol;
 
 // ---------------------------------------------------------------------------
 // extendr module registration
@@ -11,7 +10,6 @@ mod grts_sobol;
 
 extendr_module! {
     mod sbsampling;
-    use bas;
     use grts_h3;
-    use grts_sobol;
+    use sobol;
 }
