@@ -154,3 +154,38 @@ test_that(
     )
   }
 )
+
+test_that(
+  "acceptance sampling and exact area routing are quasi identical for
+  rectangular wkb inputs", {
+    # Polygon 1: [0, 1] x [0, 1] from setup.R
+    wkb1 <- create_test_wkb()
+    poly2 <- sf::st_polygon(
+      list(matrix(
+        c(0.5, 0.5,
+          0.5, 1.5,
+          1.5, 1.5,
+          1.5, 0.5,
+          0.5, 0.5),
+        ncol = 2, byrow = TRUE
+      ))
+    )
+    wkb2 <- sf::st_as_binary(sf::st_sfc(poly2, crs = 4326), EWKB = FALSE)[[1]]
+
+    ac1 <- sobol_sample(wkb1, n = 4, seed = 1, algorithm = "acceptance")
+    ro1 <- sobol_sample(wkb1, n = 4, seed = 1, algorithm = "routing")
+    expect_equal(
+      ac1[, c("lon", "lat", "rank")],
+      ro1[, c("lon", "lat", "rank")],
+      tolerance = 1e-7
+    )
+    ac2 <- sobol_sample(wkb2, n = 4, seed = 1, algorithm = "acceptance")
+    ro2 <- sobol_sample(wkb2, n = 4, seed = 1, algorithm = "routing")
+    expect_equal(
+      ac2[, c("lon", "lat", "rank")],
+      ro2[, c("lon", "lat", "rank")],
+      tolerance = 1e-7
+    )
+
+  }
+)
