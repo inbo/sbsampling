@@ -1,0 +1,41 @@
+Package: sbsampling
+Title: Sequence-Based Spatially Balanced Sampling on the Sphere
+Version: 0.1.0
+Authors@R: c(
+    person("Hans", "Van Calster", , "hans.vancalster@inbo.be", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0001-8595-8426", affiliation = "Research Institute for Nature and Forest (INBO)")),
+    person("Research Institute for Nature and Forest (INBO)", , , "info@inbo.be", role = c("cph", "fnd", "pbl"),
+           comment = c(ROR = "00j54wy13"))
+  )
+Description: Implements spatially balanced sampling algorithms on the
+    sphere using sequence-based randomization. It offers two distinct
+    methodologies: exact-area continuous sampling from vector geodata
+    utilizing Owen-scrambled Sobol sequences, and discrete spatial
+    sampling via the H3 global grid system. Both approaches operate
+    natively on unprojected geographic coordinates, eliminating the need
+    for map projections while ensuring spatially well-distributed survey
+    points.
+License: MIT + file LICENSE
+URL: https://github.com/inbo/sbsampling,
+    https://inbo.github.io/sbsampling/
+BugReports: https://github.com/inbo/sbsampling/issues
+Depends: 
+    R (>= 4.2)
+Suggests:
+    h3o,
+    knitr,
+    quarto,
+    sf,
+    testthat (>= 3.0.0)
+VignetteBuilder: 
+    quarto
+Config/citeme/communities: inbo
+Config/citeme/keywords: H3; GRTS; spatially balanced sampling; Sobol
+    sequence
+Config/rextendr/version: 0.5.0
+Config/roxygen2/version: 8.1.0
+Config/testthat/edition: 3
+Encoding: UTF-8
+Language: en-GB
+Roxygen: list(markdown = TRUE)
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.90.0, xz

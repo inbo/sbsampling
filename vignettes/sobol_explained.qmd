@@ -1,0 +1,553 @@
+---
+title: "Sampling from a continuous spatial domain"
+vignette: >
+  %\VignetteIndexEntry{Sampling from a continuous spatial domain}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: '#>'
+    echo: false
+---
+
+```{r}
+#| label: setup
+library(sbsampling)
+library(ggplot2)
+library(patchwork)
+```
+
+
+## The GRTS and BAS algorithms
+
+### Original GRTS implementation and variants
+
+```{r}
+#| label: helper-functions
+construct_index <- function(
+    reverse = FALSE, levels = 2, base = 4, randomise = TRUE, seed = NULL
+) {
+  stopifnot(levels >= 1, base >= 2, base <= 10)
+  if (!is.null(seed)) set.seed(seed)
+  n <- base^levels
+  cell <- seq_len(n) - 1
+
+  # geometric path of every cell: one row per cell, one column per level
+  geo <- matrix(
+    vapply(
+      seq_len(levels),
+      function(p) (cell %/% base^(levels - p)) %% base,
+      numeric(n)
+    ),
+    nrow = n
+  )
+
+  # address digits: geometric label, permuted independently per parent node
+  digit <- geo
+  if (randomise) {
+    for (l in seq_len(levels)) {
+      parent <- if (l == 1) {
+        rep("", n)
+      } else {
+        do.call(paste0, as.data.frame(geo[, seq_len(l - 1), drop = FALSE]))
+      }
+      nodes <- unique(parent)
+      perms <- t(vapply(nodes, function(i) sample(base) - 1, numeric(base)))
+      digit[, l] <- perms[cbind(match(parent, nodes), geo[, l] + 1)]
+    }
+  }
+
+  # normal: level 1 is the highest digit; reverse: level 1 is the lowest
+  weight <- if (reverse) {
+    base^(seq_len(levels) - 1)
+  } else {
+    base^(levels - seq_len(levels))
+  }
+  ord <- order(drop(digit %*% weight))
+
+  # the line holds geometric paths, so index_to_matrix() still works
+  path <- do.call(paste0, as.data.frame(geo))[ord]
+  attr(path, "address") <- do.call(paste0, as.data.frame(digit))[ord]
+  path
+}
+
+select_sample <- function(index, n, reverse = FALSE, u = runif(1),
+                          aligned = FALSE) {
+  N <- length(index)
+  levels <- nchar(index[1])
+  base <- round(N^(1 / levels))
+
+  # consecutive block on the REVERSE line, with a random (circular) start
+  start <- if (aligned) {
+    n * floor(u * (N %/% n))   # start on a multiple of n: no wrapping
+  } else {
+    floor(u * N)               # any start: every cell has inclusion n / N
+  }
+  sel_reverse <- (start + seq_len(n) - 1) %% N
+
+  # position of every cell on the reverse line: address read with level 1 lowest
+  digits <- matrix(
+    as.integer(unlist(strsplit(attr(index, "address"), ""))),
+    nrow = N, byrow = TRUE
+  )
+  reverse_pos <- drop(digits %*% base^(seq_len(levels) - 1))
+
+  # the sample is the same set of cells on either line
+  cells <- reverse_pos %in% sel_reverse
+  # return their positions on the line that `index` represents
+  which(cells) - 1
+}
+
+index_to_matrix <- function(index) {
+  levels <- nchar(index[1])
+  side <- 2^levels
+
+  # digits of every path: one row per cell, one column per level
+  digits <- matrix(
+    as.integer(unlist(strsplit(index, ""))),
+    nrow = length(index), byrow = TRUE
+  )
+
+  # quadrant labels, clockwise from the southwest:
+  # 0 = SW, 1 = NW, 2 = NE, 3 = SE
+  east  <- c(0, 0, 1, 1)[digits + 1]
+  north <- c(0, 1, 1, 0)[digits + 1]
+  east  <- matrix(east,  nrow = length(index))
+  north <- matrix(north, nrow = length(index))
+
+  # level 1 is the most significant bit of each coordinate
+  weight <- 2^(levels - seq_len(levels))
+  x <- drop(east  %*% weight)  # 0 = west edge
+  y <- drop(north %*% weight)  # 0 = south edge
+
+  # row 1 is the north edge, column 1 is the west edge
+  out <- matrix(NA_character_, nrow = side, ncol = side)
+  out[cbind(side - y, x + 1)] <- index
+  out
+}
+
+
+l2 <- construct_index()
+l2reverse <- construct_index(reverse = TRUE)
+
+l3 <- construct_index(levels = 3)
+l3reverse <- construct_index(reverse = TRUE, levels = 3)
+```
+
+Steps:
+
+1.   Construct a quadrant recursive map over the spatial domain from which you want to sample: a $2^H \times 2^H^$ square grid is constructed by dividing a square bounding box in four equal parts by splitting equally along the x and y axes and recurse this $H$ times.
+
+2.   Each quadrant gets a hierarchical index which maps a position in space (2D) on a 1D line. At the first division ($h = 1$), we assign indices `0`, `1`, `2` and `3` to SW, NW, NE and SE quadrants. We recurse this $H$ times and concatenate numbers together.
+
+3.   By randomising at each level of the hierarchical split (top level first), the 1D index allows spatially balanced sampling by either selecting consecutive indices (if the 1D address is constructed by concatenating from level $h = H$ up to level $h = 1$) (Theobald et al. 2007) or by a systematic jump with random start (if the 1D address is constructed by concatenating from level $h = 1$ up to level $h = H$) (Stevens and Olsen 2004).
+
+
+```{r}
+index_to_matrix(l2) |> knitr::kable()
+index_to_matrix(l2reverse) |> knitr::kable()
+
+position_matrix <- function(index) {
+  m <- index_to_matrix(index)
+  matrix(match(m, index) - 1, nrow = nrow(m))
+}
+
+position_matrix(l2) |> knitr::kable()
+position_matrix(l2reverse) |> knitr::kable()
+```
+
+
+```{r}
+#| label: showcase-grts
+
+# builds the three panels of one ordering and returns them as a list
+grts_panels <- function(
+    reverse = FALSE, levels = 2, n = NULL, seed = 1, text_size = 3.5,
+    randomise = TRUE, u = runif(1), per_row = 32
+) {
+  index <- construct_index(reverse = reverse, levels = levels, seed = seed,
+                           randomise = randomise)
+  m <- index_to_matrix(index)
+  side <- nrow(m)
+  N <- length(index)
+  sel <- if (is.null(n)) integer(0) else select_sample(index, n, reverse, u)
+  qlev <- max(levels - 1, 1)
+  per_row <- min(per_row, N)
+
+  cells <- data.frame(
+    path = as.vector(m),
+    x = as.vector(col(m)),
+    y = side - as.vector(row(m)) + 1
+  )
+  cells$pos <- match(cells$path, index) - 1
+  cells$quad <- factor(substr(cells$path, 1, qlev))
+  cells$sel <- cells$pos %in% sel
+
+  line <- data.frame(
+    path = index,
+    pos = seq_len(N) - 1,
+    quad = factor(substr(index, 1, qlev), levels = levels(cells$quad)),
+    address = attr(index, "address")
+  )
+  line$row <- line$pos %/% per_row
+  line$col <- line$pos %% per_row
+  line$sel <- line$pos %in% sel
+
+  o <- cells[order(cells$pos), ]
+  seg <- data.frame(
+    x    = o$x[-N] + 0.1 * (o$x[-1] - o$x[-N]),
+    y    = o$y[-N] + 0.1 * (o$y[-1] - o$y[-N]),
+    xend = o$x[-N] + 0.9 * (o$x[-1] - o$x[-N]),
+    yend = o$y[-N] + 0.9 * (o$y[-1] - o$y[-N])
+  )
+
+  hierarchy <- lapply(seq_len(levels), function(l) {
+    step <- side / 2^l
+    b <- seq(step, side - step, by = step) + 0.5
+    list(
+      geom_vline(xintercept = b, linewidth = 1.5 / l),
+      geom_hline(yintercept = b, linewidth = 1.5 / l)
+    )
+  })
+  frame <- annotate(
+    "rect", xmin = 0.5, xmax = side + 0.5, ymin = 0.5, ymax = side + 0.5,
+    fill = NA, colour = "black", linewidth = 1.5
+  )
+  fill_scale <- scale_fill_manual(
+    values = topo.colors(nlevels(cells$quad)),
+    name = paste0("level-", qlev, "\nquadrant")
+  )
+  mark <- function(data, w = 1, h = 1) {
+    geom_tile(
+      data = data[data$sel, ], fill = NA, colour = "black",
+      linewidth = 1.2, width = w * 0.85, height = h * 0.85
+    )
+  }
+  order_name <- if (reverse) "reverse hierarchical" else "hierarchical"
+
+  p1 <- ggplot(cells, aes(x, y)) +
+    geom_tile(aes(fill = quad), colour = "white", alpha = 0.8) +
+    hierarchy + frame +
+    geom_text(aes(label = path), size = text_size) +
+    coord_fixed() + fill_scale + theme_void() +
+    labs(
+      title = "1. 2D: quadrant paths",
+      subtitle = "level 1 digit first\n0 = SW, clockwise"
+    )
+
+  p2 <- ggplot(line, aes(col, 0)) +
+    geom_tile(aes(fill = quad), colour = "white", alpha = 0.8) +
+    mark(line, h = 1) +
+    geom_text(aes(label = path), size = text_size) +
+    geom_text(aes(y = 0.9, label = address),
+              size = text_size, colour = "grey30") +
+    geom_text(aes(y = -0.9, label = pos),
+              size = text_size, colour = "grey30") +
+    facet_wrap(~ row, ncol = 1) +
+    coord_fixed(ylim = c(-1.3, 1.3)) + fill_scale + theme_void() +
+    theme(strip.text = element_blank(),
+          plot.title = element_text(hjust = 0.5),
+          plot.subtitle = element_text(hjust = 0.5)) +
+    labs(
+      title = paste0("2. 1D line (randomised, ", order_name, ")"),
+      subtitle = "top = address, middle = path, bottom = position"
+    )
+
+  p3 <- ggplot(cells, aes(x, y)) +
+    geom_tile(aes(fill = quad), colour = "white", alpha = 0.8) +
+    hierarchy + frame +
+    geom_segment(
+      data = seg, aes(xend = xend, yend = yend),
+      colour = "grey20", alpha = 0.6, linewidth = 0.4,
+      arrow = arrow(length = unit(1.5, "mm"))
+    ) +
+    mark(cells) +
+    geom_text(aes(label = pos), size = text_size, fontface = "bold") +
+    coord_fixed() + fill_scale + theme_void() +
+    labs(
+      title = paste0("3. Position in matrix\n(", order_name, ")"),
+      subtitle = "arrows follow the line\nboxes = selected sample"
+    )
+
+  list(p1 = p1, p2 = p2, p3 = p3, side = side, per_row = per_row)
+}
+
+# both orderings, with the shared 2D map once, centred between the two rows
+showcase_grts_both <- function(
+    levels = 2, n = NULL, seed = 1, text_size = 3.5,
+    randomise = TRUE, start = runif(1), per_row = 32
+) {
+  hier <- grts_panels(
+    FALSE, levels, n, seed, text_size, randomise, start, per_row
+  )
+  rev  <- grts_panels(
+    TRUE,  levels, n, seed, text_size, randomise, start, per_row
+  )
+
+  # A spans both rows; B, C = hierarchical; D, E = reverse hierarchical
+  design <- "
+    ABC
+    ADE
+  "
+  wrap_plots(
+    A = hier$p1,
+    B = hier$p2, C = hier$p3,
+    D = rev$p2,  E = rev$p3,
+    design = design,
+    widths = c(hier$side, hier$per_row, hier$side),
+    heights = c(1, 1)
+  ) +
+    plot_layout(guides = "collect")
+}
+
+
+```
+
+
+```{r}
+#| label: example-level2
+#| fig-width: 16
+#| fig-height: 10
+#| out-width: "100%"
+#| fig-align: "center"
+
+showcase_grts_both(
+  levels = 2, n = 4, seed = 518, start = 0.2, text_size = 6
+) & theme(
+  legend.position = "none",
+  plot.title = element_text(size = 18),
+  plot.subtitle = element_text(size = 14)
+)
+```
+
+
+```{r}
+#| label: example-level3
+#| eval: false
+
+showcase_grts_both(
+  levels = 3, n = 16, seed = 518, start = 0.2, text_size = 6
+) & theme(
+  legend.position = "none",
+  plot.title = element_text(size = 16),
+  plot.subtitle = element_text(size = 12)
+)
+
+```
+
+### Original BAS implementation
+
+TO DO
+
+
+## Sobol based GRTS-like and BAS-like implementations in `sbsampling::sobol_sample()`
+
+While the original GRTS (Stevens and Olsen 2004) was a groundbreaking advance for environmental monitoring, it was designed around discrete grid approximations and hierarchical quadtree shuffling.
+The `sobol_sample()` engine modernizes this approach using scrambled low-discrepancy Sobol sequences (Joe and Kuo 2008; Burley 2020; Pharr et al. 2023), offering three core advantages.
+
+### Multi-dimensional spatial stratification: the $(t, s)$-net property
+
+In traditional GRTS, dividing space recursively into four quadrants creates a hierarchical base-4 address.
+When taking a sample of size $n = 4^k$, the algorithm ensures that each of the $4^k$ square sub-cells receives exactly one point. 
+
+However, traditional GRTS **does not constrain 1D marginal projections**.
+As seen in the quadrant map above, if you look across individual rows or columns (horizontal or vertical strips), some strips contain two points while adjacent strips contain zero or one.
+If an environmental gradient aligns primarily with latitude or longitude (such as elevation, temperature, or distance from a coastline), this uneven marginal distribution can reduce sample efficiency.
+
+`sobol_sample()` resolves this by generating points using an Owen-scrambled (Owen 2003) base-2 Sobol sequence.
+In two dimensions ($s = 2$), Sobol sequences form a $(0, 2)$-net in base 2.
+For any sample size $n = 2^m$, **every dyadic elementary rectangle** of the form:
+
+$$E = \left[\frac{i}{2^{k_1}}, \frac{i+1}{2^{k_1}}\right) \times \left[\frac{j}{2^{k_2}}, \frac{j+1}{2^{k_2}}\right)$$
+
+where $k_1 + k_2 = m$ and $i, j \in \mathbb{N}_0$, contains **exactly one sample point**.
+These rectangles split the unit square recursively and exactly halfway along either direction.
+They are also called elementary intervals (Burley 2020).
+
+For example, when $n = 16 = 2^4$ ($m = 4$), we have (@fig-elementary-intervals):
+
+* **Square quadrants ($k_1 = 2, k_2 = 2$):** Each of the $16$ squares of size $1/4 \times 1/4$ receives exactly 1 point (matching traditional GRTS level 2).
+
+* **Vertical strips ($k_1 = 4, k_2 = 0$):** Each of the $16$ vertical columns of width $1/16$ receives exactly 1 point.
+
+* **Horizontal strips ($k_1 = 0, k_2 = 4$):** Each of the $16$ horizontal rows of height $1/16$ receives exactly 1 point.
+
+* **Rectangular blocks ($k_1 = 3, k_2 = 1$ and $k_1 = 1, k_2 = 3$):** All $1/8 \times 1/2$ and $1/2 \times 1/8$ blocks also receive exactly 1 point.
+
+This property provides strict Latin Hypercube stratification along both axes simultaneously while maintaining 2D spatial balance (think of it like a super-Sudoku).
+
+
+```{r}
+#| label: fig-elementary-intervals
+#| fig-cap: Example of an Owen scrambled 2D sample of size 16. Each elementary interval of area 1/16 contains exactly one point. The numbers show the order of selection.
+create_unit_square <- function() {
+  poly <- sf::st_polygon(
+    list(matrix(c(0, 0, 0, 1, 1, 1, 1, 0, 0, 0), ncol = 2, byrow = TRUE))
+  )
+  sf::st_sfc(poly, crs = 4326)
+}
+create_test_wkb <- function() {
+  us <- create_unit_square()
+  sf::st_as_binary(us, EWKB = FALSE)[[1]]
+}
+sbs_to_sf <- function(df) {
+  df |>
+    sf::st_as_sf(
+      coords = c("lon", "lat"),
+      crs = 4326
+    )
+}
+
+make_dyadic_hierarchy <- function(d1, d2, base_linewidth = 1.5) {
+  max_l <- max(d1, d2)
+  if (max_l == 0) return(list())
+  
+  lapply(seq_len(max_l), function(l) {
+    b <- seq(0, 1, length.out = 2^l + 1)[-c(1, 2^l + 1)]
+    c(
+      if (l <= d1) list(geom_vline(xintercept = b, linewidth = base_linewidth / l)),
+      if (l <= d2) list(geom_hline(yintercept = b, linewidth = base_linewidth / l))
+    )
+  })
+}
+
+# Example usage:
+h_2_2 <- make_dyadic_hierarchy(2, 2) # Original squares
+h_3_1 <- make_dyadic_hierarchy(3, 1)
+h_1_3 <- make_dyadic_hierarchy(1, 3)
+h_4_0 <- make_dyadic_hierarchy(4, 0)
+h_0_4 <- make_dyadic_hierarchy(0, 4)
+
+wkb_unit_square <- create_test_wkb()
+example1 <- sobol_sample(
+  wkb = wkb_unit_square, n = 16, seed = 213,
+  algorithm = "routing") |> 
+  sbs_to_sf()
+
+
+p1 <- example1 |> 
+  ggplot() +
+  geom_sf(data = create_unit_square()) +
+  h_2_2 +
+  geom_sf_label(
+    aes(
+      label = rank,
+    )
+  ) +
+  theme_void()
+
+p2 <- example1 |> 
+  ggplot() +
+  geom_sf(data = create_unit_square()) +
+  h_3_1 +
+  geom_sf(colour = "red") +
+  theme_void()
+
+p3 <- example1 |> 
+  ggplot() +
+  geom_sf(data = create_unit_square()) +
+  h_1_3 +
+  geom_sf(colour = "red") +
+  theme_void()
+
+p4 <- example1 |> 
+  ggplot() +
+  geom_sf(data = create_unit_square()) +
+  h_0_4 +
+  geom_sf(colour = "red") +
+  theme_void()
+
+p5 <- example1 |> 
+  ggplot() +
+  geom_sf(data = create_unit_square()) +
+  h_4_0 +
+  geom_sf(colour = "red") +
+  theme_void()
+
+design <- "
+AABC
+AADE
+"
+list(p1, p2, p3, p4, p5)  |> 
+  wrap_plots(design = design) |> 
+  print() |> 
+  suppressWarnings()
+
+```
+
+
+
+
+### Continuous domains without grid discretization
+
+Traditional continuous GRTS discretizes the continuous geometry into a high-resolution grid of raster cells or fine points ($N = 4^H$), places them on the 1D address line, draws samples, and then takes the centroid (or jitters within the selected cell).
+This introduces:
+
+1. **Memory overhead**: Fine grids over large geographic extents quickly require gigabytes of RAM.
+
+2. **Resolution limits**: Sample points are bound to the discretisation step $H$.
+
+`sobol_sample()` operates on the exact continuous geometry using two selectable algorithms: acceptance sampling or exact routing, which we explain further.
+
+
+### Native spherical area preservation
+
+Sampling geographic coordinates $(\text{lon}, \text{lat})$ directly on a Cartesian grid introduces latitudinal area distortion, as the physical surface area of a degree of longitude shrinks toward the poles by $\cos(\text{lat})$.
+Traditional GRTS workflows require projecting vector boundaries into an equal-area coordinate reference system (such as Albers Equal Area or sinusoidal projections) before sampling.
+
+`sobol_sample()` natively addresses spherical distortion by applying an exact area-preserving coordinate transform:
+
+$$\text{lon} = \text{lon}_{\min} + u \cdot (\text{lon}_{\max} - \text{lon}_{\min})$$
+$$\sin(\text{lat}) = \sin(\text{lat}_{\min}) + v \cdot (\sin(\text{lat}_{\max}) - \sin(\text{lat}_{\min}))$$
+
+where $(u, v) \in [0, 1)^2$ are the scrambled Sobol coordinates.
+Because surface area on a sphere is proportional to $\Delta \text{lon} \cdot \Delta \sin(\text{lat})$, the expected point density per square kilometer is strictly uniform across the entire globe, operating directly on unprojected WGS-84 decimal degrees.
+
+## Algorithm variants
+
+### Acceptance sampling (`algorithm = "acceptance sampling"`)
+
+Implements a variant of Balanced Acceptance Sampling (BAS; Robertson et al. 2013).
+Candidate 2D points are evaluated directly from the continuous scrambled Sobol stream and accepted if they intersect the geometry.
+It requires zero raster grid construction and guarantees global master sample consistency across bounding boxes.
+
+While our implementation follows the core bounding-box acceptance sampling approach of Robertson et al. (2013), it differs in three key respects:
+
+-   Sobol vs. Halton sequence: We use a 2D base-2 Sobol sequence (Joe and Kuo 2008) rather than a 2D Halton sequence (bases 2 and 3), providing $(0, 2)$-net stratification across all dyadic rectangular partitions.
+
+-   Owen scrambling: Randomization is achieved via hash-based Owen scrambling (Burley 2020; Vegdahl 2021) rather than a random translation shift vector, preserving low-discrepancy properties along tree hierarchies.
+
+-   Spherical area-equal transform: Points are mapped to latitude via the inverse CDF of $\sin(\text{lat})$, preserving uniform point density per unit surface area directly on the WGS-84 sphere without prior planar projection.
+
+### Exact routing (`algorithm = "routing"`)
+
+Generates a 1D spatial sequence by Morton-interleaving the scrambled 2D Sobol coordinates, then routes points top-down through a lazy quadtree.
+At each node, the polygon geometry is clipped using Sutherland–Hodgman clipping to evaluate the exact analytical area CDF.
+Sub-branches with zero target points are pruned, and accepted points achieve practically infinite continuous resolution (down to $\sim 8\text{ cm}$ at depth 28) with zero point rejection.
+
+### Which to choose?
+
+Acceptance sampling is generally preferable over area-exact routing.
+When the fill ratio (acceptance rate) is very low, the routing algorithm becomes more efficient.
+Both algorithms give the same result if the `wkb` is rectangular.
+
+
+
+## References
+
+Burley B. (2020). Practical hash-based owen scrambling. Journal of Computer Graphics Techniques (JCGT) 10 (4): 1-20.
+
+Joe S. & Kuo F.Y. (2008). Constructing sobol sequences with better two-dimensional projections. SIAM Journal on Scientific Computing 30 (5): 2635-2654. https://doi.org/10.1137/070709359.
+
+Owen A.B. (2003). Variance with alternative scramblings of digital nets. ACM Transactions on Modeling and Computer Simulation 13 (4): 363-378. https://doi.org/10.1145/945511.945518.
+
+Pharr M., Jakob W. & Humphreys G. (2023). Physically based rendering: from theory to implementation. Fourth edition ed. The MIT Press, Cambridge, Massachusetts London, England, 1243 p. https://pbr-book.org/.
+
+Robertson B.L., Brown J.A., McDonald T. & Jaksons P. (2013). BAS: Balanced Acceptance Sampling of Natural Resources. Biometrics 69 (3): 776-784. https://doi.org/10.1111/biom.12059.
+
+Stevens D.L. & Olsen A.R. (2004). Spatially balanced sampling of natural resources. Journal of the American Statistical Association 99: 262-278.
+
+Theobald D., Stevens D., White D., Urquhart N., Olsen A. & Norman J. (2007). Using GIS to Generate Spatially Balanced Random Survey Designs for Natural Resource Applications. Environmental Management 40 (1): 134-146.
+
+Vegdahl N. (2021). Psychopath Renderer | Building a Better LK Hash. https://psychopath.io/post/2021_01_30_building_a_better_lk_hash (geraadpleegd 15 oktober 2026).
