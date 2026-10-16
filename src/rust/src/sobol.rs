@@ -283,19 +283,6 @@ fn clip_sh(input: &[Coord], xmin: f64, xmax: f64, ymin: f64, ymax: f64) -> Vec<C
     clip_edge(&p, 3, ymax)
 }
 
-fn shoelace_abs(coords: &[Coord]) -> f64 {
-    if coords.len() < 3 {
-        return 0.0;
-    }
-    let mut area = 0.0;
-    for i in 0..coords.len() {
-        let p1 = coords[i];
-        let p2 = coords[(i + 1) % coords.len()];
-        area += p1.x * p2.y - p2.x * p1.y;
-    }
-    (area / 2.0).abs()
-}
-
 fn calculate_clipped_area(rings: &[SignedRing], xmin: f64, xmax: f64, ymin: f64, ymax: f64) -> f64 {
     let mut total_area = 0.0;
     for ring in rings {
@@ -353,9 +340,60 @@ struct CellBounds {
 #[derive(Debug, Clone)]
 struct TargetPoint {
     id: usize,
-    area_target: f64,
+    /// Area offset (equal-area plane) from the start of the *current* cell.
+    offset: f64,
     lon: f64,
-    lat: f64,
+    lat: f64, // sin(lat) space until the final transform
+}
+
+/// Shoelace area with coordinates shifted to the first vertex, so tiny cells
+/// far from the origin don't lose all precision to cancellation.
+fn shoelace_abs(coords: &[Coord]) -> f64 {
+    if coords.len() < 3 {
+        return 0.0;
+    }
+    let o = coords[0];
+    let mut area = 0.0;
+    for i in 0..coords.len() {
+        let (p, q) = (coords[i], coords[(i + 1) % coords.len()]);
+        area += (p.x - o.x) * (q.y - o.y) - (q.x - o.x) * (p.y - o.y);
+    }
+    (area / 2.0).abs()
+}
+
+/// Area-weighted centroid of the (signed) clipped rings, origin-shifted for
+/// the same precision reason. Returns None if the net area is not positive.
+fn clipped_centroid(rings: &[SignedRing]) -> Option<Coord> {
+    let (mut a_sum, mut cx, mut cy) = (0.0, 0.0, 0.0);
+    for ring in rings {
+        let c = &ring.coords;
+        if c.len() < 3 {
+            continue;
+        }
+        let o = c[0];
+        let (mut a2, mut sx, mut sy) = (0.0, 0.0, 0.0);
+        for i in 0..c.len() {
+            let (p, q) = (c[i], c[(i + 1) % c.len()]);
+            let (px, py, qx, qy) = (p.x - o.x, p.y - o.y, q.x - o.x, q.y - o.y);
+            let cross = px * qy - qx * py;
+            a2 += cross;
+            sx += (px + qx) * cross;
+            sy += (py + qy) * cross;
+        }
+        if a2 == 0.0 {
+            continue;
+        }
+        let area = (a2 / 2.0).abs();
+        // centroid = sum / (3 * a2); orientation-independent
+        let (gx, gy) = (o.x + sx / (3.0 * a2), o.y + sy / (3.0 * a2));
+        a_sum += ring.sign * area;
+        cx += ring.sign * area * gx;
+        cy += ring.sign * area * gy;
+    }
+    (a_sum > 0.0).then(|| Coord {
+        x: cx / a_sum,
+        y: cy / a_sum,
+    })
 }
 
 fn route(
@@ -363,110 +401,92 @@ fn route(
     rings: &[SignedRing],
     cell: CellBounds,
     depth: u32,
-    base_area: f64,
-) {
+) -> Result<(), String> {
     if pts.is_empty() {
-        return;
+        return Ok(());
+    }
+
+    let local_rings: Vec<SignedRing> = rings
+        .iter()
+        .filter_map(|r| {
+            let c = clip_sh(&r.coords, cell.xmin, cell.xmax, cell.ymin, cell.ymax);
+            (c.len() >= 3).then_some(SignedRing {
+                coords: c,
+                sign: r.sign,
+            })
+        })
+        .collect();
+    if local_rings.is_empty() {
+        return Err(format!(
+            "{} point(s) routed into a cell with no geometry (depth {depth})",
+            pts.len()
+        ));
     }
 
     if depth == LEAF_DEPTH {
-        let cx = (cell.xmin + cell.xmax) * 0.5;
-        let cy = (cell.ymin + cell.ymax) * 0.5;
+        let c = clipped_centroid(&local_rings).unwrap_or(Coord {
+            x: (cell.xmin + cell.xmax) * 0.5,
+            y: (cell.ymin + cell.ymax) * 0.5,
+        });
         for p in pts.iter_mut() {
-            p.lon = cx;
-            p.lat = cy;
+            p.lon = c.x;
+            p.lat = c.y;
         }
-        return;
-    }
-
-    let mut local_rings = Vec::new();
-    for ring in rings {
-        let clipped = clip_sh(&ring.coords, cell.xmin, cell.xmax, cell.ymin, cell.ymax);
-        if clipped.len() >= 3 {
-            local_rings.push(SignedRing {
-                coords: clipped,
-                sign: ring.sign,
-            });
-        }
-    }
-
-    if local_rings.is_empty() {
-        return;
+        return Ok(());
     }
 
     let xmid = (cell.xmin + cell.xmax) * 0.5;
     let ymid = (cell.ymin + cell.ymax) * 0.5;
-
-    let a0 = calculate_clipped_area(&local_rings, cell.xmin, xmid, cell.ymin, ymid);
-    let a1 = calculate_clipped_area(&local_rings, xmid, cell.xmax, cell.ymin, ymid);
-    let a2 = calculate_clipped_area(&local_rings, cell.xmin, xmid, ymid, cell.ymax);
-
-    let t0 = base_area + a0;
-    let t1 = t0 + a1;
-    let t2 = t1 + a2;
-
-    let mut i0 = 0;
-    while i0 < pts.len() && pts[i0].area_target < t0 {
-        i0 += 1;
-    }
-    let (pts0, rest) = pts.split_at_mut(i0);
-
-    let mut i1 = 0;
-    while i1 < rest.len() && rest[i1].area_target < t1 {
-        i1 += 1;
-    }
-    let (pts1, rest) = rest.split_at_mut(i1);
-
-    let mut i2 = 0;
-    while i2 < rest.len() && rest[i2].area_target < t2 {
-        i2 += 1;
-    }
-    let (pts2, pts3) = rest.split_at_mut(i2);
-
-    route(
-        pts0,
-        &local_rings,
+    let quads = [
         CellBounds {
             xmax: xmid,
             ymax: ymid,
             ..cell
         },
-        depth + 1,
-        base_area,
-    );
-    route(
-        pts1,
-        &local_rings,
         CellBounds {
             xmin: xmid,
             ymax: ymid,
             ..cell
         },
-        depth + 1,
-        t0,
-    );
-    route(
-        pts2,
-        &local_rings,
         CellBounds {
             xmax: xmid,
             ymin: ymid,
             ..cell
         },
-        depth + 1,
-        t1,
-    );
-    route(
-        pts3,
-        &local_rings,
         CellBounds {
             xmin: xmid,
             ymin: ymid,
             ..cell
         },
-        depth + 1,
-        t2,
-    );
+    ];
+    let areas = quads.map(|q| calculate_clipped_area(&local_rings, q.xmin, q.xmax, q.ymin, q.ymax));
+
+    // Overshoot from rounding goes to the last child that has area, so a point
+    // can never be sent to an empty child.
+    let last = areas
+        .iter()
+        .rposition(|&a| a > 0.0)
+        .ok_or_else(|| format!("no child cell with positive area (depth {depth})"))?;
+
+    let mut rest: &mut [TargetPoint] = pts;
+    let mut base = 0.0;
+    for k in 0..=last {
+        let group: &mut [TargetPoint] = if k == last {
+            std::mem::take(&mut rest)
+        } else {
+            let thr = base + areas[k];
+            let i = rest.partition_point(|p| p.offset < thr);
+            let (g, t) = std::mem::take(&mut rest).split_at_mut(i);
+            rest = t;
+            g
+        };
+        for p in group.iter_mut() {
+            p.offset = (p.offset - base).max(0.0);
+        }
+        route(group, &local_rings, quads[k], depth + 1)?;
+        base += areas[k];
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -613,7 +633,7 @@ pub fn sobol_sample_from_wkb(
                 root_cell.ymin,
                 root_cell.ymax,
             );
-            if total_area <= 0.0 {
+            if !(total_area.is_finite() && total_area > 0.0) {
                 return Err(Error::Other(
                     "Geometry has zero computable area inside master_bbox".into(),
                 ));
@@ -630,14 +650,22 @@ pub fn sobol_sample_from_wkb(
                 let u = (m64 >> 11) as f64 / (1u64 << 53) as f64;
                 targets.push(TargetPoint {
                     id: i,
-                    area_target: u * total_area,
-                    lon: 0.0,
-                    lat: 0.0,
+                    offset: u * total_area,
+                    lon: f64::NAN,
+                    lat: f64::NAN,
                 });
             }
-
-            targets.sort_by(|a, b| a.area_target.partial_cmp(&b.area_target).unwrap());
-            route(&mut targets, &signed_rings, root_cell, 1, 0.0);
+            targets.sort_by(|a, b| a.offset.total_cmp(&b.offset)); // no NaN panic
+            route(&mut targets, &signed_rings, root_cell, 1)
+                .map_err(|e| Error::Other(format!("routing failed: {e}")))?;
+            if targets
+                .iter()
+                .any(|t| !t.lon.is_finite() || !t.lat.is_finite())
+            {
+                return Err(Error::Other(
+                    "routing produced non-finite coordinates".into(),
+                ));
+            }
             targets.sort_by_key(|t| t.id);
 
             let lons: Vec<f64> = targets.iter().map(|t| t.lon).collect();
@@ -676,6 +704,8 @@ pub fn sobol_sample_from_wkb(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use geo::algorithm::intersects::Intersects;
+    use geo::{MultiPolygon, Polygon};
 
     #[inline]
     fn sobol_sample(index: u32, dimension: usize, seed: u32) -> f64 {
@@ -858,6 +888,114 @@ mod tests {
                 seen[b] = true;
             }
         }
+    }
+    fn route_u(geom: &Geometry, bb: (f64, f64, f64, f64), us: &[f64]) -> Vec<Point> {
+        let rings = extract_signed_rings(geom).unwrap();
+        let root = CellBounds {
+            xmin: bb.0,
+            xmax: bb.2,
+            ymin: lat_to_s(bb.1),
+            ymax: lat_to_s(bb.3),
+        };
+        let total = calculate_clipped_area(&rings, root.xmin, root.xmax, root.ymin, root.ymax);
+        let mut t: Vec<TargetPoint> = us
+            .iter()
+            .enumerate()
+            .map(|(id, u)| TargetPoint {
+                id,
+                offset: u * total,
+                lon: f64::NAN,
+                lat: f64::NAN,
+            })
+            .collect();
+        t.sort_by(|a, b| a.offset.total_cmp(&b.offset));
+        route(&mut t, &rings, root, 1).expect("routing failed");
+        t.iter()
+            .map(|p| Point::new(p.lon, s_to_lat(p.lat)))
+            .collect()
+    }
+
+    fn grid_us(n: usize) -> Vec<f64> {
+        let mut u: Vec<f64> = (0..n).map(|i| (i as f64 + 0.5) / n as f64).collect();
+        u.push(0.0);
+        u.push(1.0 - f64::EPSILON / 2.0); // extreme ends
+        u
+    }
+
+    fn assert_all_inside(geom: &Geometry, pts: &[Point]) {
+        for p in pts {
+            assert!(
+                p.x().is_finite() && p.y().is_finite(),
+                "non-finite point {p:?}"
+            );
+            assert!(geom.intersects(p), "point outside geometry: {p:?}");
+        }
+    }
+
+    #[test]
+    fn routing_sliver_triangle_stays_inside() {
+        let g = Geometry::Polygon(Polygon::new(
+            LineString::from(vec![(0.0, 0.0), (10.0, 0.0), (10.0, 0.01), (0.0, 0.0)]),
+            vec![],
+        ));
+        assert_all_inside(&g, &route_u(&g, (0.0, 0.0, 10.0, 0.01), &grid_us(2000)));
+    }
+
+    #[test]
+    fn routing_respects_holes() {
+        let g = Geometry::Polygon(Polygon::new(
+            LineString::from(vec![
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (1.0, 1.0),
+                (0.0, 1.0),
+                (0.0, 0.0),
+            ]),
+            vec![LineString::from(vec![
+                (0.25, 0.25),
+                (0.75, 0.25),
+                (0.75, 0.75),
+                (0.25, 0.75),
+                (0.25, 0.25),
+            ])],
+        ));
+        let pts = route_u(&g, (0.0, 0.0, 1.0, 1.0), &grid_us(2000));
+        assert_all_inside(&g, &pts);
+        assert!(pts
+            .iter()
+            .all(|p| !(p.x() > 0.26 && p.x() < 0.74 && p.y() > 0.26 && p.y() < 0.74)));
+    }
+
+    #[test]
+    fn routing_disjoint_parts_with_empty_gap() {
+        let sq = |x: f64| {
+            Polygon::new(
+                LineString::from(vec![
+                    (x, 0.0),
+                    (x + 1.0, 0.0),
+                    (x + 1.0, 1.0),
+                    (x, 1.0),
+                    (x, 0.0),
+                ]),
+                vec![],
+            )
+        };
+        let g = Geometry::MultiPolygon(MultiPolygon(vec![sq(0.0), sq(50.0)]));
+        assert_all_inside(&g, &route_u(&g, (0.0, 0.0, 51.0, 1.0), &grid_us(2000)));
+    }
+
+    #[test]
+    fn shoelace_is_precise_for_tiny_cells_far_from_origin() {
+        let s = 1e-6;
+        let (x, y) = (170.0, 0.9);
+        let sq = [
+            Coord { x, y },
+            Coord { x: x + s, y },
+            Coord { x: x + s, y: y + s },
+            Coord { x, y: y + s },
+        ];
+        let rel = (shoelace_abs(&sq) - s * s).abs() / (s * s);
+        assert!(rel < 1e-6, "relative area error {rel}");
     }
 }
 
