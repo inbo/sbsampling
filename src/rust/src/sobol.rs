@@ -11,6 +11,8 @@ use geo::algorithm::bounding_rect::BoundingRect;
 use geo::algorithm::contains::Contains;
 use geo::{Coord, Geometry, LineString, Point, Rect};
 use geo_traits::to_geo::ToGeoGeometry;
+use rand::{RngCore, SeedableRng};
+use rand_pcg::Pcg64Mcg;
 use wkb::reader::Wkb;
 
 const LON_MIN: f64 = -180.0;
@@ -45,7 +47,7 @@ const DIRECTION_VECTORS: [[u32; 32]; 5] = [
         0x00000400, 0x00000200, 0x00000100, 0x00000080, 0x00000040, 0x00000020, 0x00000010,
         0x00000008, 0x00000004, 0x00000002, 0x00000001,
     ],
-    // dim 1: Joe-Kuo new-6
+    // dim 1: Joe-Kuo d=2 (s=1, a=0, m=[1])
     [
         0x80000000, 0xc0000000, 0xa0000000, 0xf0000000, 0x88000000, 0xcc000000, 0xaa000000,
         0xff000000, 0x80800000, 0xc0c00000, 0xa0a00000, 0xf0f00000, 0x88880000, 0xcccc0000,
@@ -53,29 +55,29 @@ const DIRECTION_VECTORS: [[u32; 32]; 5] = [
         0xcc00cc00, 0xaa00aa00, 0xff00ff00, 0x80808080, 0xc0c0c0c0, 0xa0a0a0a0, 0xf0f0f0f0,
         0x88888888, 0xcccccccc, 0xaaaaaaaa, 0xffffffff,
     ],
-    // dim 2: Joe-Kuo new-6 (s=2, a=1)
+    // dim 2: Joe-Kuo d=3 (s=2, a=1, m=[1,3])
     [
-        0x80000000, 0xc0000000, 0xe0000000, 0xd0000000, 0xe0000000, 0xd8000000, 0xee000000,
-        0xd5000000, 0xe0000000, 0xd8000000, 0xee000000, 0xd5800000, 0xe0e00000, 0xd8d80000,
-        0xeeee0000, 0xd5550000, 0xe0000000, 0xd8000000, 0xee000000, 0xd5800000, 0xe0e00000,
-        0xd8d80000, 0xeeee0000, 0xd5558000, 0xe000e000, 0xd800d800, 0xee00ee00, 0xd580d580,
-        0xe0e0e0e0, 0xd8d8d8d8, 0xeeeeeeee, 0xd5555555,
+        0x80000000, 0xc0000000, 0x60000000, 0x90000000, 0xe8000000, 0x5c000000, 0x8e000000,
+        0xc5000000, 0x68800000, 0x9cc00000, 0xee600000, 0x55900000, 0x80680000, 0xc09c0000,
+        0x60ee0000, 0x90550000, 0xe8808000, 0x5cc0c000, 0x8e606000, 0xc5909000, 0x6868e800,
+        0x9c9c5c00, 0xeeee8e00, 0x5555c500, 0x8000e880, 0xc0005cc0, 0x60008e60, 0x9000c590,
+        0xe8006868, 0x5c009c9c, 0x8e00eeee, 0xc5005555,
     ],
-    // dim 3: Joe-Kuo new-6 (s=3, a=1)
+    // dim 3: Joe-Kuo d=4 (s=3, a=1, m=[1,3,1])
     [
-        0x80000000, 0xc0000000, 0x20000000, 0xd0000000, 0x38000000, 0xd4000000, 0x20000000,
-        0xd3000000, 0x39800000, 0xd7800000, 0x20a00000, 0xd0500000, 0x39080000, 0xd4c40000,
-        0x20420000, 0xd3010000, 0x39898000, 0xd7884000, 0x20a5a000, 0xd05f5000, 0x390a8800,
-        0xd4c97000, 0x20401e00, 0xd30c0b00, 0x398a1580, 0xd7850880, 0x20a7a4c0, 0xd0526260,
-        0x390911f0, 0xd4c40868, 0x20421434, 0xd3010e11,
+        0x80000000, 0xc0000000, 0x20000000, 0x50000000, 0xf8000000, 0x74000000, 0xa2000000,
+        0x93000000, 0xd8800000, 0x25400000, 0x59e00000, 0xe6d00000, 0x78080000, 0xb40c0000,
+        0x82020000, 0xc3050000, 0x208f8000, 0x51474000, 0xfbea2000, 0x75d93000, 0xa0858800,
+        0x914e5400, 0xdbe79e00, 0x25db6d00, 0x58800080, 0xe54000c0, 0x79e00020, 0xb6d00050,
+        0x800800f8, 0xc00c0074, 0x200200a2, 0x50050093,
     ],
-    // dim 4: Joe-Kuo new-6 (s=3, a=2)
+    // dim 4: Joe-Kuo d=5 (s=3, a=2, m=[1,1,1])
     [
-        0x80000000, 0x40000000, 0x20000000, 0x30000000, 0x38000000, 0x3c000000, 0x3a000000,
-        0x3d000000, 0x3a000000, 0x3d800000, 0x3ac00000, 0x3d600000, 0x3a200000, 0x3d900000,
-        0x3ac80000, 0x3d640000, 0x3a200000, 0x3d920000, 0x3acb0000, 0x3d678000, 0x3a238800,
-        0x3d91c400, 0x3ac8aa00, 0x3d645500, 0x3a202a80, 0x3d921d40, 0x3acb06a0, 0x3d678350,
-        0x3a238888, 0x3d91c444, 0x3ac8aa22, 0x3d645511,
+        0x80000000, 0x40000000, 0x20000000, 0xb0000000, 0xf8000000, 0xdc000000, 0x7a000000,
+        0x9d000000, 0x5a800000, 0x2fc00000, 0xa1600000, 0xf0b00000, 0xda880000, 0x6fc40000,
+        0x81620000, 0x40bb0000, 0x22878000, 0xb3c9c000, 0xfb65a000, 0xddb2d000, 0x78022800,
+        0x9c0b3c00, 0x5a0fb600, 0x2d0ddb00, 0xa2878080, 0xf3c9c040, 0xdb65a020, 0x6db2d0b0,
+        0x800228f8, 0x400b3cdc, 0x200fb67a, 0xb00ddb9d,
     ],
 ];
 
@@ -104,9 +106,12 @@ fn lk_hash(mut x: u32, seed: u32) -> u32 {
     x
 }
 
+const N_DIMS: usize = DIRECTION_VECTORS.len();
+
 #[inline]
-fn dim_seed(global_seed: u32, dim: usize) -> u32 {
-    lk_hash(global_seed, dim as u32).wrapping_add(0x9e37_79b9)
+fn dim_seeds(global_seed: u64) -> [u32; N_DIMS] {
+    let mut rng = Pcg64Mcg::seed_from_u64(global_seed);
+    std::array::from_fn(|_| (rng.next_u64() >> 32) as u32)
 }
 
 #[inline]
@@ -482,9 +487,13 @@ pub fn sobol_sample_from_wkb(
     }
 
     // Preferred XOR-folding seed representation
-    let seed_u32 = (seed.to_bits() ^ (seed.to_bits() >> 32)) as u32;
-    let seed_x = dim_seed(seed_u32, 0);
-    let seed_y = dim_seed(seed_u32, 1);
+    if !(seed.is_finite() && seed >= 0.0 && seed.fract() == 0.0 && seed < 9_007_199_254_740_992.0) {
+        return Err(Error::Other(
+            "seed must be a whole number in [0, 2^53)".into(),
+        ));
+    }
+    let seeds = dim_seeds(seed as u64);
+    let (seed_x, seed_y) = (seeds[0], seeds[1]);
 
     // Decode WKB
     let wkb_obj =
@@ -748,30 +757,45 @@ mod tests {
     }
 
     // ── Seed independence ────────────────────────────────────────────────────
-
     #[test]
-    fn dim_seeds_are_distinct_for_seed_zero() {
-        let s0 = dim_seed(0, 0);
-        let s1 = dim_seed(0, 1);
-        assert_ne!(
-            s0, s1,
-            "dim_seed(0,0) == dim_seed(0,1): dims not independent"
-        );
-        assert_ne!(s0, 0, "dim_seed(0,0) == 0: scramble would be null for lon");
-        assert_ne!(s1, 0, "dim_seed(0,1) == 0: scramble would be null for lat");
+    fn dim_seeds_distinct_and_nonzero_for_seed_zero() {
+        let s = dim_seeds(0);
+        for i in 0..N_DIMS {
+            assert_ne!(s[i], 0);
+            for j in (i + 1)..N_DIMS {
+                assert_ne!(s[i], s[j], "dims {i} and {j} share a scramble seed");
+            }
+        }
     }
 
     #[test]
     fn dim_seeds_vary_across_global_seeds() {
-        for dim in 0..5usize {
-            let s0 = dim_seed(0, dim);
-            let s1 = dim_seed(1, dim);
-            assert_ne!(
-                s0, s1,
-                "dim_seed(0,{}) == dim_seed(1,{}): global seed has no effect",
-                dim, dim
-            );
+        for dim in 0..N_DIMS {
+            assert_ne!(dim_seeds(0)[dim], dim_seeds(1)[dim]);
         }
+    }
+
+    /// Regression test for the old fold+lk_hash seeding, where small integer seeds
+    /// shared the same coarse-level scramble and produced near-identical points.
+    /// Old code: mean |du| ≈ 0.13; well-mixed seeds: ≈ 0.28.
+    #[test]
+    fn adjacent_seeds_are_decorrelated() {
+        let mut total = 0.0;
+        for s in 0..64u64 {
+            let (a, b) = (dim_seeds(s)[0], dim_seeds(s + 1)[0]);
+            total += (0..64u32)
+                .map(|i| {
+                    let u = |sd| owen_scramble(sobol_raw(i, 0), sd) as f64 / 4_294_967_296.0;
+                    (u(a) - u(b)).abs()
+                })
+                .sum::<f64>()
+                / 64.0;
+        }
+        let mean = total / 64.0;
+        assert!(
+            mean > 0.2,
+            "adjacent seeds look correlated: mean |du| = {mean}"
+        );
     }
 
     // ── Prefix stability ─────────────────────────────────────────────────────
@@ -786,6 +810,54 @@ mod tests {
             &long[..100],
             "first 100 values differ between n=100 and n=200 runs"
         );
+    }
+
+    /// (s, a, initial m) for dims 1..=4, from new-joe-kuo-6.21201 (rows d=2..5).
+    const JK_PARAMS: [(usize, u32, &[u32]); 4] = [
+        (1, 0, &[1]),
+        (2, 1, &[1, 3]),
+        (3, 1, &[1, 3, 1]),
+        (3, 2, &[1, 1, 1]),
+    ];
+
+    fn vectors_from_recurrence(s: usize, a: u32, m_init: &[u32]) -> [u32; 32] {
+        let mut m = [0u32; 32];
+        m[..s].copy_from_slice(m_init);
+        for k in s..32 {
+            let mut new = m[k - s] ^ (m[k - s] << s);
+            for i in 1..s {
+                if (a >> (s - 1 - i)) & 1 == 1 {
+                    new ^= m[k - i] << i;
+                }
+            }
+            m[k] = new;
+        }
+        std::array::from_fn(|k| m[k] << (31 - k))
+    }
+
+    #[test]
+    fn direction_vectors_match_joe_kuo_recurrence() {
+        for (d, &(s, a, m)) in JK_PARAMS.iter().enumerate() {
+            assert_eq!(
+                DIRECTION_VECTORS[d + 1],
+                vectors_from_recurrence(s, a, m),
+                "dim {} deviates from its Joe-Kuo recurrence",
+                d + 1
+            );
+        }
+    }
+
+    #[test]
+    fn every_dim_is_one_dimensionally_stratified() {
+        // Any valid Sobol dim puts the first 2^10 points one per 1/1024 stratum.
+        for dim in 0..N_DIMS {
+            let mut seen = vec![false; 1024];
+            for i in 0..1024u32 {
+                let b = (sobol_raw(i, dim) >> 22) as usize;
+                assert!(!seen[b], "dim {dim}: stratum {b} hit twice");
+                seen[b] = true;
+            }
+        }
     }
 }
 
