@@ -137,12 +137,26 @@ l3reverse <- construct_index(reverse = TRUE, levels = 3)
 
 Steps:
 
-1.   Construct a quadrant recursive map over the spatial domain from which you want to sample: a $2^H \times 2^H^$ square grid is constructed by dividing a square bounding box in four equal parts by splitting equally along the x and y axes and recurse this $H$ times.
+1.   Construct a quadrant recursive map over the spatial domain from which you want to sample: a $2^H \times 2^H$ square grid is constructed by dividing a square bounding box in four equal parts by splitting equally along the x and y axes and recurse this $H$ times.
 
-2.   Each quadrant gets a hierarchical index which maps a position in space (2D) on a 1D line. At the first division ($h = 1$), we assign indices `0`, `1`, `2` and `3` to SW, NW, NE and SE quadrants. We recurse this $H$ times and concatenate numbers together.
+2.   Each (sub)quadrant can be given an address which maps to a position in space (2D).
+At the first division ($h = 1$), we assign indices `0`, `1`, `2` and `3` to SW, NW, NE and SE quadrants.
+We recurse this $H$ times and concatenate numbers together.
+Figure @fig-example-level2 (1) shows what this looks like after recursing once (= level 2).
+For instance, the level 2 cell with address `30` is situated in the SW corner of the SE level 1 quadrant.
+When following a path using a fixed ordering from `00` -> `03`, ..., `30` -> `33`, we obtain a so-called Morton curve through space.
+It results in visiting first all level 2 cells from the SW level 1 quadrant, then those from the NW level 1 quadrant and so on.
+Thus, if we skip three level 2 cells along this path, we would land each time in the next level 1 quadrant.
+This is a first ingredient that we need for spatially balanced sampling (spreading sampling locations across space).
+We also need randomness however.
 
-3.   By randomising at each level of the hierarchical split (top level first), the 1D index allows spatially balanced sampling by either selecting consecutive indices (if the 1D address is constructed by concatenating from level $h = H$ up to level $h = 1$) (Theobald et al. 2007) or by a systematic jump with random start (if the 1D address is constructed by concatenating from level $h = 1$ up to level $h = H$) (Stevens and Olsen 2004).
-
+3.   By randomly permuting (scrambling) at each level of the hierarchical split (top level first), we have a mechanism for randomly drawing samples.
+For instance in @fig-example-level2, the level 1 quadrants [0, 1, 2, 3] became [2, 0, 1, 3] after permutation.
+This top-down permutation combined with a way to order the cells along a 1D line, defines how we can draw a spatially balanced GRTS sample.
+The first way to order is by concatenating the base-4 address indices from the top level $h = 1$ up to level $h = H$.
+We can then take a sample by a systematic jump through the ordered list starting from a random start (Stevens and Olsen 2004).
+The second way to order is by concatenating from level $h = H$ up to level $h = 1$).
+Selecting a spatially balanced sampling is then done by selecting consecutive indices  (Theobald et al. 2007).
 
 ```{r}
 index_to_matrix(l2) |> knitr::kable()
