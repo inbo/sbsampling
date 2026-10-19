@@ -73,3 +73,20 @@ test_that("n = -5 returns a clear error", {
     "`n` must be "
   )
 })
+
+test_that(
+  "acceptance sampling fails fast when geometry misses the master bbox", {
+  tri <- sf::st_as_binary(sf::st_polygon(list(
+    rbind(c(0, 0), c(10, 0), c(0, 10), c(0, 0))
+  )))
+  t <- system.time(
+    expect_error(
+      sobol_sample(tri, n = 100, seed = 1,
+                   master_bbox = c(8, 8, 10, 10),
+                   algorithm = "acceptance sampling"),
+      "zero computable area"
+    )
+  )[["elapsed"]]
+  expect_lt(t, 5)
+  }
+)

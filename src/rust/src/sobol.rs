@@ -19,7 +19,10 @@ const LON_MIN: f64 = -180.0;
 const LON_MAX: f64 = 180.0;
 const LEAF_DEPTH: u32 = 28;
 const DENSIFY_DEG: f64 = 0.01;
-
+/// Refuse acceptance sampling when the expected number of scanned indices
+/// exceeds this. The hard index limit is 2^32 ≈ 4.3e9; this leaves room for
+/// sampling variance. At ~8.5e6 scans/s, 1e9 is about 2 minutes.
+const MAX_EXPECTED_SCAN: f64 = 1.0e9;
 // ---------------------------------------------------------------------------
 // Coordinate Transforms (Equal-Area on Sphere)
 // ---------------------------------------------------------------------------
@@ -571,8 +574,38 @@ pub fn sobol_sample_from_wkb(
         ymax: lat_to_s(seq_ymax),
     };
 
+    // Exact polygon area (equal-area plane) inside the sequence domain. Used by
+    // both algorithms: routing needs it as the CDF total, acceptance uses it to
+    // fail fast on empty overlap and on hopeless scan costs.
+    let signed_rings = extract_signed_rings(&geom)?;
+    let total_area = calculate_clipped_area(
+        &signed_rings,
+        root_cell.xmin,
+        root_cell.xmax,
+        root_cell.ymin,
+        root_cell.ymax,
+    );
+    if !(total_area.is_finite() && total_area > 0.0) {
+        return Err(Error::Other(
+            "Geometry has zero computable area inside master_bbox".into(),
+        ));
+    }
+
     let (lons, lats, indices, sobol_scanned, acceptance_rate) = match algorithm {
         "acceptance sampling" | "acceptance" => {
+            // Expected Sobol indices to scan: n / fill, with fill the share of the
+            // sequence domain covered by the polygon (equal-area plane).
+            let root_area = (root_cell.xmax - root_cell.xmin) * (root_cell.ymax - root_cell.ymin);
+            let expected_scan = target_n as f64 * root_area / total_area;
+            if expected_scan > MAX_EXPECTED_SCAN {
+                return Err(Error::Other(format!(
+                    "acceptance sampling would need about {:.1e} Sobol indices \
+                     (limit {:.1e}): the geometry covers too small a part of the \
+                     sequence domain. Use algorithm = \"routing\" or a smaller \
+                     master_bbox.",
+                    expected_scan, MAX_EXPECTED_SCAN
+                )));
+            }
             let mut lons = Vec::with_capacity(target_n);
             let mut lats = Vec::with_capacity(target_n);
             let mut indices = Vec::with_capacity(target_n);
@@ -625,20 +658,6 @@ pub fn sobol_sample_from_wkb(
             (lons, lats, indices, scanned, acc_rate)
         }
         "routing" => {
-            let signed_rings = extract_signed_rings(&geom)?;
-            let total_area = calculate_clipped_area(
-                &signed_rings,
-                root_cell.xmin,
-                root_cell.xmax,
-                root_cell.ymin,
-                root_cell.ymax,
-            );
-            if !(total_area.is_finite() && total_area > 0.0) {
-                return Err(Error::Other(
-                    "Geometry has zero computable area inside master_bbox".into(),
-                ));
-            }
-
             let mut targets = Vec::with_capacity(target_n);
             for i in 0..target_n {
                 let rx = sobol_raw(i as u32, 0);
