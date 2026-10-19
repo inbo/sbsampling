@@ -210,3 +210,61 @@ test_that("master_bbox covering polygon bbox does not warn", {
   )
 })
 
+test_that("sort keys are pinned for the whole coverage", {
+  skip_if_not_installed("sf")
+  wkb <- create_test_wkb()
+  n_all <- attr(grts_h3(wkb, n = 1, resolution = 4, seed = 1), "n_cells")
+  r <- grts_h3(wkb, n = n_all, resolution = 4, seed = 215215)
+  # Any change to the key pipeline changes this snapshot, i.e. every sample.
+  expect_snapshot_value(setNames(r$sort_key, r$cell), style = "deparse")
+})
+
+# Hex string -> raw vector of little-endian u64 (the `cells` input format)
+h3_hex_to_raw <- function(hex) {
+  hex <- paste0(strrep("0", 16 - nchar(hex)), hex)
+  bytes <- vapply(
+    hex,
+    function(h) strtoi(substring(h, seq(1, 15, by = 2), seq(2, 16, by = 2)), 16L),
+    integer(8)
+  )
+  as.raw(as.vector(bytes[8:1, , drop = FALSE]))
+}
+
+test_that("res-15 sort keys are pinned across base cells and a pentagon", {
+  # Expected keys come from an independent re-implementation of the key
+  # (base-cell shuffle, per-parent permutations, bit layout), seed = 42.
+  # Listed in ascending key order, which is the output order.
+  expected <- c(
+    "8f464b968480463" = "000206966a2dc89f", # Honolulu
+    "8f7eb57221acba8" = "0003762b286a81b3", # near antimeridian
+    "8ff2938565b506e" = "00052c403d32a73e", # near south pole
+    "8f0326222a584e8" = "00085a58c61d4127", # near north pole
+    "8f0800000000000" = "0008a4262a862d46", # pentagon (base cell 4)
+    "8f66d33ab84b8db" = "0008f4d94631820c", # Quito
+    "8f1fa4418c6905a" = "000a61af12d8a834", # Brussels
+    "8fbe0e35cb15192" = "000d25a93602b308"  # Sydney
+  )
+  r <- grts_h3(
+    cells = h3_hex_to_raw(names(expected)),
+    n = length(expected),
+    seed = 42
+  )
+  expect_equal(setNames(r$sort_key, r$cell), expected)
+})
+
+test_that("sort keys do not depend on the other cells or on input order", {
+  skip_if_not_installed("sf")
+  cov <- h3_get_coverage(create_test_wkb(), resolution = 5)
+  m <- matrix(cov, nrow = 8)             # one H3 index (8 raw bytes) per column
+  n_all <- ncol(m)
+  full <- grts_h3(cells = cov, n = n_all, seed = 42)
+
+  # same cells, reversed input order
+  rev_cov <- as.vector(m[, rev(seq_len(n_all))])
+  expect_equal(grts_h3(cells = rev_cov, n = n_all, seed = 42), full)
+
+  # a subset of the cells: shared cells must carry identical keys
+  idx <- seq(1, n_all, by = 3)
+  sub <- grts_h3(cells = as.vector(m[, idx]), n = length(idx), seed = 42)
+  expect_equal(sub$sort_key, full$sort_key[match(sub$cell, full$cell)])
+})

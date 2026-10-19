@@ -10,7 +10,7 @@
 #' @param containment The containment mode to use. One of "centroid",
 #' "intersect", "boundary", or "covers".
 #'
-#' @return A character vector of H3 cell identifiers.
+#' @return A raw vector of H3 cell identifiers.
 #' @export
 h3_get_coverage <- function(
   wkb,

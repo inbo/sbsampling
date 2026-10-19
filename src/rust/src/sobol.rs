@@ -6,13 +6,12 @@
 // 2. "routing" (Continuous GRTS): Maps the 1D Morton-interleaved sequence
 //    down an exact-area quadtree. Zero rejection, ideal for sparse/narrow domains.
 
+use crate::rng;
 use extendr_api::prelude::*;
 use geo::algorithm::bounding_rect::BoundingRect;
 use geo::algorithm::contains::Contains;
 use geo::{Coord, Geometry, LineString, Point, Rect};
 use geo_traits::to_geo::ToGeoGeometry;
-use rand::{RngCore, SeedableRng};
-use rand_pcg::Pcg64Mcg;
 use wkb::reader::Wkb;
 
 const LON_MIN: f64 = -180.0;
@@ -22,6 +21,7 @@ const DENSIFY_DEG: f64 = 0.01;
 /// Refuse acceptance sampling when the expected number of scanned indices
 /// exceeds this. The hard index limit is 2^32 ≈ 4.3e9; this leaves room for
 /// sampling variance. At ~8.5e6 scans/s, 1e9 is about 2 minutes.
+/// Must stay well below i32::MAX (the `rank` column is an R integer).
 const MAX_EXPECTED_SCAN: f64 = 1.0e9;
 // ---------------------------------------------------------------------------
 // Coordinate Transforms (Equal-Area on Sphere)
@@ -113,8 +113,8 @@ const N_DIMS: usize = DIRECTION_VECTORS.len();
 
 #[inline]
 fn dim_seeds(global_seed: u64) -> [u32; N_DIMS] {
-    let mut rng = Pcg64Mcg::seed_from_u64(global_seed);
-    std::array::from_fn(|_| (rng.next_u64() >> 32) as u32)
+    let mut rng = rng::seeded_rng(global_seed);
+    std::array::from_fn(|_| rng::next_u32_hi(&mut rng))
 }
 
 #[inline]
@@ -649,7 +649,13 @@ pub fn sobol_sample_from_wkb(
                 ) {
                     lons.push(cand_lon);
                     lats.push(cand_lat);
-                    indices.push((scan_idx - 1) as i32);
+                    indices.push(i32::try_from(scan_idx - 1).map_err(|_| {
+                        Error::Other(
+                            "Sobol rank exceeds R's integer range (2^31 - 1); \
+                           use algorithm = \"routing\" or a smaller master_bbox."
+                                .into(),
+                        )
+                    })?);
                 }
             }
 

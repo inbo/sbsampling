@@ -19,7 +19,7 @@ h3_get_coverage(
 "intersect", "boundary", or "covers".}
 }
 \value{
-A character vector of H3 cell identifiers.
+A raw vector of H3 cell identifiers.
 }
 \description{
 Tessellates a study area polygon into an H3 hexagonal grid and returns

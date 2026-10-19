@@ -1,14 +1,13 @@
+use crate::rng;
 use extendr_api::prelude::*;
 use geo::Geometry;
 use geo_traits::to_geo::ToGeoGeometry;
 use h3o::geom::{ContainmentMode, TilerBuilder};
 use h3o::{CellIndex, Resolution};
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use rand_pcg::Pcg64Mcg;
 use std::collections::BinaryHeap;
 use std::convert::TryInto;
 use wkb::reader::Wkb;
+
 // ---------------------------------------------------------------------------
 // H3 bit-layout constants (from the H3 spec)
 // ---------------------------------------------------------------------------
@@ -431,9 +430,11 @@ fn compute_sort_key(
 
         // Cache hit logic: only shuffle if the parent is different from the last cell we saw
         if last_seen_perm[r_idx].0 != parent_id {
-            let mut rng = Pcg64Mcg::seed_from_u64(parent_id.wrapping_add(seed_u64));
+            // Hash the pair instead of adding: parent_id + seed collides across
+            // (parent, seed) pairs.
+            let mut rng = rng::seeded_rng(parent_id ^ rng::mix(seed_u64));
             let mut perm = [0u64, 1, 2, 3, 4, 5, 6];
-            perm.shuffle(&mut rng);
+            rng::shuffle(&mut rng, &mut perm);
             last_seen_perm[r_idx] = (parent_id, perm);
         }
 
@@ -573,11 +574,11 @@ fn feed_geometry(tiler: &mut h3o::geom::Tiler, geometry: Geometry) -> extendr_ap
 
 /// Return a shuffled mapping of base cell indices 0–121.
 /// This forms the most significant level of the GRTS address, ensuring that
-/// sample coverage is balanced across the entire Earth surface.
+/// sample coverage is balanced
 fn shuffled_base_cells(seed_u64: u64) -> [u64; H3_NUM_BASE_CELLS] {
     let mut cells: [u64; H3_NUM_BASE_CELLS] = std::array::from_fn(|i| i as u64);
-    let mut rng = Pcg64Mcg::seed_from_u64(seed_u64);
-    cells.shuffle(&mut rng);
+    let mut rng = rng::seeded_rng(seed_u64);
+    rng::shuffle(&mut rng, &mut cells);
     cells
 }
 
