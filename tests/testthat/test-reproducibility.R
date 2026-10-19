@@ -189,3 +189,24 @@ test_that(
 
   }
 )
+
+test_that("master_bbox smaller than polygon bbox warns", {
+  sq <- sf::st_polygon(list(rbind(c(0, 0), c(2, 0), c(2, 2), c(0, 2), c(0, 0))))
+  wkb <- sf::st_as_binary(sq)
+  expect_warning(
+    sobol_sample(wkb, n = 10, seed = 1, master_bbox = c(0, 0, 1, 2)),
+    "extends beyond"
+  )
+})
+
+test_that("master_bbox covering polygon bbox does not warn", {
+  sq <- sf::st_polygon(list(rbind(c(0, 0), c(2, 0), c(2, 2), c(0, 2), c(0, 0))))
+  wkb <- sf::st_as_binary(sq)
+  expect_no_warning(
+    sobol_sample(wkb, n = 10, seed = 1, master_bbox = c(-1, -1, 3, 3))
+  )
+  expect_no_warning(
+    sobol_sample(wkb, n = 10, seed = 1, master_bbox = c(0, 0, 2, 2))
+  )
+})
+

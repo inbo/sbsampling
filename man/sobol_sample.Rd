@@ -21,7 +21,10 @@ in WGS84 (EPSG:4326). Must be a \code{POLYGON} or \code{MULTIPOLYGON}.}
 \item{seed}{Numeric. Random seed (whole number \verb{>= 0} and \verb{< 2^53}).}
 
 \item{master_bbox}{Optional numeric vector \code{c(xmin, ymin, xmax, ymax)} in
-decimal degrees.}
+decimal degrees (WGS84).
+Defines the domain of the sequence.
+If \code{NULL} (default), the bounding box of \code{wkb} is used.
+See the section "Master bounding box".}
 
 \item{algorithm}{Character string specifying the sampling approach:
 \itemize{
@@ -43,6 +46,8 @@ The returned \code{data.frame} also carries the following attributes:
 \itemize{
 \item \code{seed}          – The seed used (numeric).
 \item \code{n}             – Requested sample size (integer).
+\item \code{bbox} – Named numeric vector \code{c(xmin, ymin, xmax, ymax)} of the polygon
+bounding box in decimal degrees.
 \item \code{sequence_bbox} – Named numeric vector \code{c(xmin, ymin, xmax, ymax)} of the
 geometry bounding box in decimal degrees.
 Either from master bounding box or polygon bounding box.
@@ -66,3 +71,24 @@ therefore scales to very large study areas without memory pressure.
 H3 cell indices can be obtained afterwards using \code{\link[h3o:h3_from_xy]{h3o::h3_from_xy()}} if
 needed.
 }
+\section{Master bounding box}{
+
+Points are only drawn from the part of the polygon that lies inside
+\code{master_bbox}.
+If the polygon extends beyond the box, that part is never
+sampled and a warning is issued.
+The \code{n} requested points are still returned, spread over the area inside the
+box.
+They are not an equal-probability sample of the whole polygon.
+
+If the polygon only touches the box without overlapping it, the call fails
+(\code{"routing"}) or can scan a very long stretch of the sequence before
+failing (\code{"acceptance sampling"}).
+
+With the same \code{master_bbox}, \code{seed} and \code{algorithm}, the sequence domain is
+identical for different polygons.
+Spatial consistency across polygons holds for \code{"acceptance sampling"}, but
+not for \code{"routing"}, which depends on the exact area of each polygon
+(see \code{\link[=grts_sobol]{grts_sobol()}}).
+}
+

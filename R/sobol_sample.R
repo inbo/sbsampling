@@ -17,12 +17,34 @@
 #' @param n Integer. Target number of sample locations to draw.
 #' @param seed Numeric. Random seed (whole number `>= 0` and `< 2^53`).
 #' @param master_bbox Optional numeric vector `c(xmin, ymin, xmax, ymax)` in
-#'   decimal degrees.
+#'   decimal degrees (WGS84).
+#'   Defines the domain of the sequence.
+#'   If `NULL` (default), the bounding box of `wkb` is used.
+#'   See the section "Master bounding box".
 #' @param algorithm Character string specifying the sampling approach:
 #'   \itemize{
 #'     \item \code{"acceptance sampling"}: Balanced Acceptance Sampling (BAS) bounding-box rejection.
 #'     \item \code{"routing"}: Continuous GRTS exact-area quadtree routing (zero rejection).
 #'   }
+#'
+#' @section Master bounding box:
+#' Points are only drawn from the part of the polygon that lies inside
+#' `master_bbox`.
+#' If the polygon extends beyond the box, that part is never
+#' sampled and a warning is issued.
+#' The `n` requested points are still returned, spread over the area inside the
+#' box.
+#' They are not an equal-probability sample of the whole polygon.
+#'
+#' If the polygon only touches the box without overlapping it, the call fails
+#' (`"routing"`) or can scan a very long stretch of the sequence before
+#' failing (`"acceptance sampling"`).
+#'
+#' With the same `master_bbox`, `seed` and `algorithm`, the sequence domain is
+#' identical for different polygons.
+#' Spatial consistency across polygons holds for `"acceptance sampling"`, but
+#' not for `"routing"`, which depends on the exact area of each polygon
+#' (see [grts_sobol()]).
 #'
 #' @return A `data.frame` with `n` rows and three columns:
 #' * `lon`         – Longitude of the sample point (WGS84 decimal degrees).
@@ -34,6 +56,8 @@
 #' The returned `data.frame` also carries the following attributes:
 #' * `seed`          – The seed used (numeric).
 #' * `n`             – Requested sample size (integer).
+#' * `bbox` – Named numeric vector `c(xmin, ymin, xmax, ymax)` of the polygon
+#'            bounding box in decimal degrees.
 #' * `sequence_bbox` – Named numeric vector `c(xmin, ymin, xmax, ymax)` of the
 #'                     geometry bounding box in decimal degrees.
 #'                     Either from master bounding box or polygon bounding box.
@@ -75,6 +99,22 @@ sobol_sample <- function(wkb,
     }
   }
 
+  if (!is.null(master_bbox)) {
+    poly_bb <- attr(res_df, "bbox")
+    seq_bb <- attr(res_df, "sequence_bbox")
+    tol <- 1e-9
+    crosses <- poly_bb[["xmin"]] < seq_bb[["xmin"]] - tol ||
+      poly_bb[["ymin"]] < seq_bb[["ymin"]] - tol ||
+      poly_bb[["xmax"]] > seq_bb[["xmax"]] + tol ||
+      poly_bb[["ymax"]] > seq_bb[["ymax"]] + tol
+    if (crosses) {
+      warning(
+        "The bounding box of `wkb` extends beyond `master_bbox`. ",
+        "Only the part of the polygon inside `master_bbox` was sampled.",
+        call. = FALSE
+      )
+    }
+  }
   res_df
 }
 
@@ -225,7 +265,7 @@ bas_sobol <- function(wkb, n, seed, master_bbox = NULL) {
 #'   reproducible sampling. Must be a whole number `>= 0` and `< 2^53`.
 #'   The seed controls the independent Owen scrambles applied to the spatial
 #'   dimensions before Morton interleaving.
-#'  @param master_bbox Numeric vector `c(xmin, ymin, xmax, ymax)`
+#' @param master_bbox Numeric vector `c(xmin, ymin, xmax, ymax)`
 #'   (WGS-84 decimal degrees).
 #'
 #' @return A `data.frame` with `n` rows and three columns:

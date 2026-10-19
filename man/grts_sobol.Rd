@@ -15,8 +15,9 @@ in WGS84 (EPSG:4326). Must be a \code{POLYGON} or \code{MULTIPOLYGON}.}
 \item{seed}{Numeric. A random seed passed to the Rust engine to ensure
 reproducible sampling. Must be a whole number \verb{>= 0} and \verb{< 2^53}.
 The seed controls the independent Owen scrambles applied to the spatial
-dimensions before Morton interleaving.
-@param master_bbox Numeric vector \code{c(xmin, ymin, xmax, ymax)}
+dimensions before Morton interleaving.}
+
+\item{master_bbox}{Numeric vector \code{c(xmin, ymin, xmax, ymax)}
 (WGS-84 decimal degrees).}
 }
 \value{
@@ -99,17 +100,19 @@ nc <- st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
 study_area <- nc[1, ] |> st_geometry() |> st_as_binary(EWKB = FALSE)
 
 # Draw a spatially balanced sample of 50 points
-sample_df <- grts_sobol(
+sample_df <- sobol_sample(
   wkb  = study_area[[1]],
   n    = 50,
-  seed = 2021
+  seed = 2021,
+  algorithm = "routing"
 )
 
 # Prefix stability: extend to 100 points — first 50 rows are identical
-sample_df_100 <- grts_sobol(
+sample_df_100 <- sobol_sample(
   wkb  = study_area[[1]],
   n    = 100,
-  seed = 2021
+  seed = 2021,
+  algorithm = "routing"
 )
 stopifnot(identical(sample_df[1:50, c("lon", "lat")],
                     sample_df_100[1:50, c("lon", "lat")]))
