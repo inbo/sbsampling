@@ -1,0 +1,42 @@
+description: Configuration file for checklist::check_pkg()
+package: yes
+allowed:
+  warnings: []
+  notes:
+  - motivation: Will be fixed when this goes to main branch
+    value: |-
+      checking CRAN incoming feasibility ... NOTE
+      Maintainer: 'Hans Van Calster <hans.vancalster@inbo.be>'
+
+      New submission
+
+      Found the following (possibly) invalid URLs:
+        URL: https://inbo.github.io/sbsampling/
+          From: DESCRIPTION
+                inst/CITATION
+          Status: 404
+          Message: Not Found
+required:
+- CITATION
+- DESCRIPTION
+- R CMD check
+- checklist
+- codemeta
+- documentation
+- filename conventions
+- folder conventions
+- license
+- lintr
+- organisation
+- repository secret
+- spelling
+spelling:
+  default: en-GB
+  ignore:
+  - .github
+  - docs/
+  - LICENSE.md
+  - R/extendr-wrappers.R
+  - tests/testthat/_snaps/
+pak: []
+gha_install: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y

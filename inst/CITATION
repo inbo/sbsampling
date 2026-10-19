@@ -1,0 +1,13 @@
+citHeader("To cite `sbsampling` in publications please use:")
+# begin checklist entry
+bibentry(
+  bibtype = "Manual",
+  title = "sbsampling: Sequence-Based Spatially Balanced Sampling on the Sphere. Version 0.1.0",
+  author = c(person(given = "Hans", family = "Van Calster")),
+  year = 2026,
+  url = "https://inbo.github.io/sbsampling/",
+  abstract = "Implements spatially balanced sampling algorithms on the sphere using sequence-based randomization. It offers two distinct methodologies: exact-area continuous sampling from vector geodata utilizing Owen-scrambled Sobol sequences, and discrete spatial sampling via the H3 global grid system. Both approaches operate natively on unprojected geographic coordinates, eliminating the need for map projections while ensuring spatially well-distributed survey points.",
+  textVersion = "Van Calster, Hans (2026) sbsampling: Sequence-Based Spatially Balanced Sampling on the Sphere. Version 0.1.0. https://inbo.github.io/sbsampling/",
+  keywords = "H3; GRTS; spatially balanced sampling; Sobol sequence",
+)
+# end checklist entry

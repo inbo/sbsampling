@@ -1,0 +1,40 @@
+{
+  "title": "sbsampling: Sequence-Based Spatially Balanced Sampling on the Sphere",
+  "version": "0.1.0",
+  "license": "mit",
+  "upload_type": "software",
+  "description": "<p>Implements spatially balanced sampling algorithms on the sphere using sequence-based randomization. It offers two distinct methodologies: exact-area continuous sampling from vector geodata utilizing Owen-scrambled Sobol sequences, and discrete spatial sampling via the H3 global grid system. Both approaches operate natively on unprojected geographic coordinates, eliminating the need for map projections while ensuring spatially well-distributed survey points.<\/p>",
+  "keywords": [
+    "H3",
+    "GRTS",
+    "spatially balanced sampling",
+    "Sobol sequence"
+  ],
+  "access_right": "open",
+  "language": "eng",
+  "contributors": [
+    {
+      "name": "Van Calster, Hans",
+      "affiliation": "Research Institute for Nature and Forest (INBO)",
+      "orcid": "0000-0001-8595-8426",
+      "type": "ContactPerson"
+    },
+    {
+      "name": "Research Institute for Nature and Forest (INBO)",
+      "type": "RightsHolder"
+    }
+  ],
+  "creators": [
+    {
+      "name": "Van Calster, Hans",
+      "affiliation": "Research Institute for Nature and Forest (INBO)",
+      "orcid": "0000-0001-8595-8426"
+    }
+  ],
+  "communities": [
+    {
+      "identifier": "inbo"
+    }
+  ],
+  "publisher": "Research Institute for Nature and Forest (INBO)"
+}
