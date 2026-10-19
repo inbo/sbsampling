@@ -380,24 +380,25 @@ fn build_result_df(
 // ---------------------------------------------------------------------------
 // Sort key computation
 // ---------------------------------------------------------------------------
-
 /// Compute the GRTS sort key for a single H3 cell.
 ///
-/// The sort key is a packed u64 built top-down through the H3 hierarchy:
+/// The sort key is a packed u64. It is computed top-down through the H3
+/// hierarchy, but laid out coarsest-first from the least significant bit,
+/// so the finest resolution occupies the most significant bits:
 ///
 /// ```text
-/// bits 63..52  unused
-/// bits 51..45  shuffled base cell  (7 bits, SORT_KEY_BASE_BITS)
-/// bits 44..42  shuffled digit at res 1  (3 bits each)
-/// bits 41..39  shuffled digit at res 2
+/// bits 0..6       shuffled base cell        (7 bits, SORT_KEY_BASE_BITS)
+/// bits 7..9       shuffled digit at res 1   (3 bits each)
+/// bits 10..12     shuffled digit at res 2
 /// ...
-/// bits (44 - 3*(res-1))..(42 - 3*(res-1))  shuffled digit at target res
+/// bits (7 + 3*(res-1))..(7 + 3*res - 1)   shuffled digit at target res
+/// bits 52..63     unused (at res 15; more bits are unused at lower res)
 /// ```
 ///
-/// Each digit is the child index (0–6) within its parent, remapped through a
-/// per-parent pseudo-random permutation. Pentagon parents only have 6 valid
-/// children (digits 0–5), but the same 7-element permutation is also used for
-/// these (harmless).
+/// Each digit is the H3 digit (0–6) of the cell at that level, remapped
+/// through a per-parent pseudo-random permutation. Pentagon parents have only
+/// 6 valid children (digit 1 never occurs), but the same 7-element permutation
+/// is used for them (harmless).
 fn compute_sort_key(
     cell: CellIndex,
     res: i32,
