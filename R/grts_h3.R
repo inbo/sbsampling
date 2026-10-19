@@ -8,8 +8,9 @@
 #'
 #' @param wkb Raw byte vector representing Well-Known Binary (WKB) geometry in
 #' WGS84 (EPSG:4326).
-#' @param cells Raw byte vector of pre-computed H3 cell indices.
-#'  Use `h3_get_coverage()` to generate them.
+#' @param cells Raw byte vector of pre-computed H3 cell indices, all at the
+#'  same resolution. Use `h3_get_coverage()` to generate them. Invalid indices
+#'  or mixed resolutions are an error; duplicates are removed with a warning.
 #'  If provided, `wkb`, `resolution`, and `containment` are ignored.
 #' @param n Integer. The target number of sample locations to draw.
 #' @param resolution The H3 resolution to use (0-15).
@@ -22,18 +23,24 @@
 #'  this is ignored in the sampling step but can be corrected at the estimation
 #'  stage using the returned `area_m2` and `ip` columns.
 #'  If `TRUE`, Sequential Poisson Sampling is applied, making the effective
-#'  inclusion probability proportional to area: pi_i = n * area_i / sum(area).
+#'  inclusion probability approximately proportional to area:
+#'  pi_i = n * area_i / sum(area).
 #' @param seed Numeric. A random seed passed to the Rust engine to ensure a
 #'   reproducible hierarchical shuffle. The seed must be a whole number,
 #'   `>= 0`, and `< 2^53`.
 #'
 #'
 #' @return A `data.frame` with four columns and `n` rows, ordered by ascending
-#'  sort key (GRTS visiting order):
+#'  effective key (GRTS visiting order):
 #' * `cell`     – H3 cell identifier as a lowercase hexadecimal string.
 #' * `sort_key` – GRTS sort key as a zero-padded 16-character lowercase hex
 #'                string. Zero-padding ensures correct lexicographic ordering
 #'                (e.g. for merging tile results).
+#' * `effective_key` – Value used to rank cells for selection; the cells with
+#'                     the smallest values are sampled. Equal to the numeric
+#'                     value of `sort_key` if `area_correction = FALSE`, and
+#'                     `sort_key / area_m2` if `TRUE`. The data frame is
+#'                     ordered by this column.
 #' * `area_m2` – True area of the cell in m².
 #' * `ip`      – Inclusion probability pi_i of the sampled cell:
 #'                  area_correction = FALSE: pi_i = n / N  (constant)
@@ -52,6 +59,8 @@
 #' * `resolution`  – H3 resolution used.
 #' * `containment` – Containment mode used.
 #' * `area_correction` – Whether area-proportional sampling was applied.
+#' * `n_duplicates_removed` – (cells input only) number of duplicate cells
+#'                          dropped before sampling.
 #'
 #' @export
 #'
@@ -113,6 +122,14 @@ grts_h3 <- function(
       global_seed = as.numeric(seed),
       area_correction = area_correction
     )
+    n_dup <- attr(res_df, "n_duplicates_removed")
+    if (!is.null(n_dup) && n_dup > 0) {
+      warning(
+        n_dup,
+        " duplicate H3 cell(s) in `cells` were removed.",
+        call. = FALSE
+      )
+    }
     return(res_df)
   }
 

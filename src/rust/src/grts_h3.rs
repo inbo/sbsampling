@@ -215,31 +215,12 @@ pub fn grts_sample_from_cells(
     let seed_u64 = global_seed as u64;
     let target_n = n as usize;
 
-    // Safety check: ensure the byte slice is a perfect multiple of 8
-    if cells_bytes.is_empty() || !cells_bytes.len().is_multiple_of(8) {
-        return Err(Error::Other(
-            "Provided cells vector is empty or malformed.".into(),
-        ));
-    }
-
-    // The Lazy Iterator: stream directly from index 0
-    let make_iter = || {
-        cells_bytes
-            .chunks_exact(8)
-            .map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()))
-            .filter_map(|val| CellIndex::try_from(val).ok())
-    };
-
-    // Extract resolution from the first cell
-    let first_cell = make_iter()
-        .next()
-        .ok_or_else(|| Error::Other("Failed to parse first H3 cell.".into()))?;
-    let res = first_cell.resolution() as i32;
-
+    let (cells, n_dup) = parse_cells(cells_bytes)?;
+    let res = cells[0].resolution() as i32;
     let base_cells = shuffled_base_cells(seed_u64);
 
     let (sorted, total_cells, sum_all_areas) = grts_core(
-        make_iter(),
+        cells.iter().copied(),
         target_n,
         res,
         seed_u64,
@@ -247,7 +228,7 @@ pub fn grts_sample_from_cells(
         &base_cells,
     )?;
 
-    build_result_df(
+    let mut df = build_result_df(
         sorted,
         total_cells,
         sum_all_areas,
@@ -255,14 +236,15 @@ pub fn grts_sample_from_cells(
         res,
         "pre-computed",
         area_correction,
-    )
+    )?;
+    df.set_attrib("n_duplicates_removed", n_dup as i32)?;
+    Ok(df)
 }
 
 // ---------------------------------------------------------------------------
 // Shared Core Logic
 // ---------------------------------------------------------------------------
 
-#[inline]
 fn grts_core(
     cell_iter: impl Iterator<Item = CellIndex>,
     target_n: usize,
@@ -415,7 +397,8 @@ fn build_result_df(
 ///
 /// Each digit is the child index (0–6) within its parent, remapped through a
 /// per-parent pseudo-random permutation. Pentagon parents only have 6 valid
-/// children (digits 0–5), so a 6-element permutation is used for those.
+/// children (digits 0–5), but the same 7-element permutation is also used for
+/// these (harmless).
 fn compute_sort_key(
     cell: CellIndex,
     res: i32,
@@ -611,6 +594,115 @@ fn geometry_type_name<T: geo::CoordNum>(geom: &Geometry<T>) -> &'static str {
         Geometry::GeometryCollection(_) => "GeometryCollection",
         Geometry::Rect(_) => "Rect",
         Geometry::Triangle(_) => "Triangle",
+    }
+}
+
+/// Parse, validate, and dedupe a raw little-endian u64 cell vector.
+/// Returns the sorted unique cells and the number of duplicates removed.
+fn parse_cells(cells_bytes: &[u8]) -> extendr_api::Result<(Vec<CellIndex>, usize)> {
+    if cells_bytes.is_empty() || !cells_bytes.len().is_multiple_of(8) {
+        return Err(Error::Other(
+            "Provided cells vector is empty or its length is not a multiple of 8 bytes.".into(),
+        ));
+    }
+
+    let total = cells_bytes.len() / 8;
+    let mut cells: Vec<CellIndex> = Vec::with_capacity(total);
+    let mut n_invalid = 0usize;
+    let mut first_bad: Option<u64> = None;
+
+    for chunk in cells_bytes.chunks_exact(8) {
+        let raw = u64::from_le_bytes(chunk.try_into().unwrap());
+        match CellIndex::try_from(raw) {
+            Ok(c) => cells.push(c),
+            Err(_) => {
+                n_invalid += 1;
+                first_bad.get_or_insert(raw);
+            }
+        }
+    }
+    if n_invalid > 0 {
+        return Err(Error::Other(format!(
+            "{n_invalid} of {total} values are not valid H3 cell indices (first: {:x}).",
+            first_bad.unwrap_or(0)
+        )));
+    }
+
+    // Non-empty here: the byte vector was non-empty and every value parsed.
+    let res = cells[0].resolution();
+    if let Some(other) = cells.iter().find(|c| c.resolution() != res) {
+        return Err(Error::Other(format!(
+            "All cells must share one resolution; found {} and {}.",
+            u8::from(res),
+            u8::from(other.resolution())
+        )));
+    }
+
+    cells.sort_unstable();
+    cells.dedup();
+    let n_dup = total - cells.len();
+    Ok((cells, n_dup))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use h3o::LatLng;
+
+    fn cell(lat: f64, lng: f64, res: Resolution) -> u64 {
+        u64::from(LatLng::new(lat, lng).unwrap().to_cell(res))
+    }
+    fn bytes(v: &[u64]) -> Vec<u8> {
+        v.iter().flat_map(|c| c.to_le_bytes()).collect()
+    }
+
+    #[test]
+    fn parse_cells_dedupes_and_sorts() {
+        let a = cell(50.0, 4.0, Resolution::Five);
+        let b = cell(51.0, 5.0, Resolution::Five);
+        let (cells, dup) = parse_cells(&bytes(&[b, a, b])).unwrap();
+        assert_eq!(dup, 1);
+        assert_eq!(cells.len(), 2);
+        assert!(cells.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    #[test]
+    fn parse_cells_rejects_invalid_index() {
+        let a = cell(50.0, 4.0, Resolution::Five);
+        assert!(parse_cells(&bytes(&[a, 0])).is_err());
+    }
+
+    #[test]
+    fn parse_cells_rejects_mixed_resolution() {
+        let a = cell(50.0, 4.0, Resolution::Five);
+        let b = cell(50.0, 4.0, Resolution::Six);
+        assert!(parse_cells(&bytes(&[a, b])).is_err());
+    }
+
+    #[test]
+    fn parse_cells_rejects_empty_and_misaligned() {
+        assert!(parse_cells(&[]).is_err());
+        assert!(parse_cells(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn sample_is_independent_of_input_order() {
+        let cs: Vec<u64> = (0..40)
+            .map(|i| cell(48.0 + i as f64 * 0.1, 4.0, Resolution::Seven))
+            .collect();
+        let mut rev = cs.clone();
+        rev.reverse();
+        let run = |v: &[u64]| {
+            let (cells, _) = parse_cells(&bytes(v)).unwrap();
+            let base = shuffled_base_cells(7);
+            grts_core(cells.iter().copied(), 10, 7, 7, false, &base)
+                .unwrap()
+                .0
+                .iter()
+                .map(|e| e.h3_index)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(run(&cs), run(&rev));
     }
 }
 

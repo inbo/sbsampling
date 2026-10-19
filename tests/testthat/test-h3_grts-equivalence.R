@@ -37,8 +37,10 @@ test_that("WKB and cells pathways produce identical samples", {
   # expected metadata difference.
   expect_equal(attr(out_wkb,   "containment"), "centroid")
   expect_equal(attr(out_cells, "containment"), "pre-computed")
+  expect_equal(attr(out_cells, "n_duplicates_removed"), 0L)
   attr(out_wkb,   "containment") <- NULL
   attr(out_cells, "containment") <- NULL
+  attr(out_cells, "n_duplicates_removed") <- NULL
 
   expect_equal(out_wkb, out_cells)
 })

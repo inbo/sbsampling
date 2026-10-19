@@ -18,8 +18,9 @@ grts_h3(
 \item{wkb}{Raw byte vector representing Well-Known Binary (WKB) geometry in
 WGS84 (EPSG:4326).}
 
-\item{cells}{Raw byte vector of pre-computed H3 cell indices.
-Use \code{h3_get_coverage()} to generate them.
+\item{cells}{Raw byte vector of pre-computed H3 cell indices, all at the
+same resolution. Use \code{h3_get_coverage()} to generate them. Invalid indices
+or mixed resolutions are an error; duplicates are removed with a warning.
 If provided, \code{wkb}, \code{resolution}, and \code{containment} are ignored.}
 
 \item{n}{Integer. The target number of sample locations to draw.}
@@ -40,16 +41,22 @@ Cell areas vary by up to ~1.9x across the icosahedral projection;
 this is ignored in the sampling step but can be corrected at the estimation
 stage using the returned \code{area_m2} and \code{ip} columns.
 If \code{TRUE}, Sequential Poisson Sampling is applied, making the effective
-inclusion probability proportional to area: pi_i = n * area_i / sum(area).}
+inclusion probability approximately proportional to area:
+pi_i = n * area_i / sum(area).}
 }
 \value{
 A \code{data.frame} with four columns and \code{n} rows, ordered by ascending
-sort key (GRTS visiting order):
+effective key (GRTS visiting order):
 \itemize{
 \item \code{cell}     – H3 cell identifier as a lowercase hexadecimal string.
 \item \code{sort_key} – GRTS sort key as a zero-padded 16-character lowercase hex
 string. Zero-padding ensures correct lexicographic ordering
 (e.g. for merging tile results).
+\item \code{effective_key} – Value used to rank cells for selection; the cells with
+the smallest values are sampled. Equal to the numeric
+value of \code{sort_key} if \code{area_correction = FALSE}, and
+\code{sort_key / area_m2} if \code{TRUE}. The data frame is
+ordered by this column.
 \item \code{area_m2} – True area of the cell in m².
 \item \code{ip}      – Inclusion probability pi_i of the sampled cell:
 area_correction = FALSE: pi_i = n / N  (constant)
@@ -70,6 +77,8 @@ area of the study area as seen by the H3 grid).
 \item \code{resolution}  – H3 resolution used.
 \item \code{containment} – Containment mode used.
 \item \code{area_correction} – Whether area-proportional sampling was applied.
+\item \code{n_duplicates_removed} – (cells input only) number of duplicate cells
+dropped before sampling.
 }
 }
 \description{
