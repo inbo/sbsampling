@@ -298,17 +298,19 @@ bas_sobol <- function(wkb, n, seed, master_bbox = NULL) {
 #' study_area <- nc[1, ] |> st_geometry() |> st_as_binary(EWKB = FALSE)
 #'
 #' # Draw a spatially balanced sample of 50 points
-#' sample_df <- grts_sobol(
+#' sample_df <- sobol_sample(
 #'   wkb  = study_area[[1]],
 #'   n    = 50,
-#'   seed = 2021
+#'   seed = 2021,
+#'   algorithm = "routing"
 #' )
 #'
 #' # Prefix stability: extend to 100 points — first 50 rows are identical
-#' sample_df_100 <- grts_sobol(
+#' sample_df_100 <- sobol_sample(
 #'   wkb  = study_area[[1]],
 #'   n    = 100,
-#'   seed = 2021
+#'   seed = 2021,
+#'   algorithm = "routing"
 #' )
 #' stopifnot(identical(sample_df[1:50, c("lon", "lat")],
 #'                     sample_df_100[1:50, c("lon", "lat")]))
@@ -335,7 +337,7 @@ grts_sobol <- function(wkb, n, seed, master_bbox = NULL) {
 is_valid_bbox <- function(bbox) {
   is.null(bbox) || (
     #Numeric vector c(xmin, ymin, xmax, ymax) (WGS-84 decimal degrees)
-    is.numeric(bbox) &&
+    is.double(bbox) &&
       length(bbox) == 4 &&
       bbox_is_decimal_degrees(bbox)
   )
