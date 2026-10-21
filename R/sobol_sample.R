@@ -23,8 +23,18 @@
 #'   See the section "Master bounding box".
 #' @param algorithm Character string specifying the sampling approach:
 #'   \itemize{
-#'     \item \code{"acceptance sampling"}: Balanced Acceptance Sampling (BAS) bounding-box rejection.
-#'     \item \code{"routing"}: Continuous GRTS exact-area quadtree routing (zero rejection).
+#'     \item \code{"acceptance sampling"}: Balanced Acceptance Sampling (BAS)
+#'      algorithm. Points are generated in the bounding box and are accepted
+#'      when they fall inside the polygon.
+#'     \item \code{"routing"}: Maps a 1D Morton-interleaved sequence down an
+#'      exact-area quadtree (zero rejection, prefix stable). Ideal for sparse
+#'      and narrow domains.
+#'     \item \code{"warp"}: (2-D hierarchical sample warping): Keeps the two
+#'      Sobol coordinates (u1, u2) separate and pushes them down the same
+#'      exact-area quadtree as a binary-tree Rosenblatt transform (x-split
+#'      with u1, then conditional y-split with u2, rescaling both after every
+#'      level).
+#'      Zero rejection, prefix stable.
 #'   }
 #'
 #' @section Master bounding box:
@@ -43,8 +53,8 @@
 #' With the same `master_bbox`, `seed` and `algorithm`, the sequence domain is
 #' identical for different polygons.
 #' Spatial consistency across polygons holds for `"acceptance sampling"`, but
-#' not for `"routing"`, which depends on the exact area of each polygon
-#' (see [grts_sobol()]).
+#' not for `"routing"` or `"warp"`, which depends on the exact area of each
+#' polygon.
 #'
 #' @return A `data.frame` with `n` rows and three columns:
 #' * `lon`         – Longitude of the sample point (WGS84 decimal degrees).
@@ -68,11 +78,14 @@
 #'                     (< 0.05) indicate a sparse geometry relative to its
 #'                     bounding box and imply higher computational cost.
 #' @export
-sobol_sample <- function(wkb,
-                         n,
-                         seed,
-                         master_bbox = NULL,
-                         algorithm = c("acceptance sampling", "routing")) {
+sobol_sample <- function(
+    wkb,
+    n,
+    seed,
+    master_bbox = NULL,
+    algorithm = c("acceptance sampling", "routing", "warp")
+  )
+{
   algorithm <- match.arg(algorithm)
 
   stopifnot(

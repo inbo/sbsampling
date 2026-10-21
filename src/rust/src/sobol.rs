@@ -5,6 +5,13 @@
 //    box and accepts those inside the polygon. Best for compact/dense shapes.
 // 2. "routing" (Continuous GRTS): Maps the 1D Morton-interleaved sequence
 //    down an exact-area quadtree. Zero rejection, ideal for sparse/narrow domains.
+// 3. "warp" (2-D hierarchical sample warping): Keeps the two Sobol coordinates
+//    (u1, u2) separate and pushes them down the same exact-area quadtree as a
+//    binary-tree Rosenblatt transform (x-split with u1, then conditional
+//    y-split with u2, rescaling both after every level). On a full cell the
+//    warp is the identity, so the (0,m,2)-net is recovered exactly; clipping
+//    deforms the net smoothly instead of relabelling it along a Morton curve.
+//    Zero rejection, prefix stable.
 
 use crate::rng;
 use extendr_api::prelude::*;
@@ -399,6 +406,57 @@ fn clipped_centroid(rings: &[SignedRing]) -> Option<Coord> {
     })
 }
 
+/// Clip every ring to `cell`, dropping rings that vanish.
+fn clip_rings(rings: &[SignedRing], cell: CellBounds) -> Vec<SignedRing> {
+    rings
+        .iter()
+        .filter_map(|r| {
+            let c = clip_sh(&r.coords, cell.xmin, cell.xmax, cell.ymin, cell.ymax);
+            (c.len() >= 3).then_some(SignedRing {
+                coords: c,
+                sign: r.sign,
+            })
+        })
+        .collect()
+}
+
+/// Split a cell into 4 quadrants. Index = x_high + 2 * y_high:
+/// 0 = (xl, yl), 1 = (xh, yl), 2 = (xl, yh), 3 = (xh, yh).
+fn split_cell(cell: CellBounds) -> [CellBounds; 4] {
+    let xmid = (cell.xmin + cell.xmax) * 0.5;
+    let ymid = (cell.ymin + cell.ymax) * 0.5;
+    [
+        CellBounds {
+            xmax: xmid,
+            ymax: ymid,
+            ..cell
+        },
+        CellBounds {
+            xmin: xmid,
+            ymax: ymid,
+            ..cell
+        },
+        CellBounds {
+            xmax: xmid,
+            ymin: ymid,
+            ..cell
+        },
+        CellBounds {
+            xmin: xmid,
+            ymin: ymid,
+            ..cell
+        },
+    ]
+}
+
+/// Output location for points that reach the leaf depth.
+fn leaf_centroid(local_rings: &[SignedRing], cell: CellBounds) -> Coord {
+    clipped_centroid(local_rings).unwrap_or(Coord {
+        x: (cell.xmin + cell.xmax) * 0.5,
+        y: (cell.ymin + cell.ymax) * 0.5,
+    })
+}
+
 fn route(
     pts: &mut [TargetPoint],
     rings: &[SignedRing],
@@ -409,16 +467,7 @@ fn route(
         return Ok(());
     }
 
-    let local_rings: Vec<SignedRing> = rings
-        .iter()
-        .filter_map(|r| {
-            let c = clip_sh(&r.coords, cell.xmin, cell.xmax, cell.ymin, cell.ymax);
-            (c.len() >= 3).then_some(SignedRing {
-                coords: c,
-                sign: r.sign,
-            })
-        })
-        .collect();
+    let local_rings = clip_rings(rings, cell);
     if local_rings.is_empty() {
         return Err(format!(
             "{} point(s) routed into a cell with no geometry (depth {depth})",
@@ -427,10 +476,7 @@ fn route(
     }
 
     if depth == LEAF_DEPTH {
-        let c = clipped_centroid(&local_rings).unwrap_or(Coord {
-            x: (cell.xmin + cell.xmax) * 0.5,
-            y: (cell.ymin + cell.ymax) * 0.5,
-        });
+        let c = leaf_centroid(&local_rings, cell);
         for p in pts.iter_mut() {
             p.lon = c.x;
             p.lat = c.y;
@@ -438,30 +484,7 @@ fn route(
         return Ok(());
     }
 
-    let xmid = (cell.xmin + cell.xmax) * 0.5;
-    let ymid = (cell.ymin + cell.ymax) * 0.5;
-    let quads = [
-        CellBounds {
-            xmax: xmid,
-            ymax: ymid,
-            ..cell
-        },
-        CellBounds {
-            xmin: xmid,
-            ymax: ymid,
-            ..cell
-        },
-        CellBounds {
-            xmax: xmid,
-            ymin: ymid,
-            ..cell
-        },
-        CellBounds {
-            xmin: xmid,
-            ymin: ymid,
-            ..cell
-        },
-    ];
+    let quads = split_cell(cell);
     let areas = quads.map(|q| calculate_clipped_area(&local_rings, q.xmin, q.xmax, q.ymin, q.ymax));
 
     // Overshoot from rounding goes to the last child that has area, so a point
@@ -488,6 +511,105 @@ fn route(
         }
         route(group, &local_rings, quads[k], depth + 1)?;
         base += areas[k];
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 2-D Warp Routing (hierarchical sample warping / binary Rosenblatt transform)
+// ---------------------------------------------------------------------------
+
+/// Largest f64 strictly below 1.0; keeps rescaled coordinates in [0, 1).
+const U_MAX: f64 = 1.0 - f64::EPSILON / 2.0;
+const INV_2_32: f64 = 1.0 / 4_294_967_296.0;
+
+#[derive(Debug, Clone)]
+struct WarpPoint {
+    id: usize,
+    /// Remaining x-coordinate of the Sobol pair, relative to the current cell.
+    u1: f64,
+    /// Remaining y-coordinate of the Sobol pair, relative to the current cell.
+    u2: f64,
+    /// Scratch: child quadrant chosen at the current level.
+    q: u8,
+    lon: f64,
+    lat: f64, // sin(lat) space until the final transform
+}
+
+/// Choose between two sides with areas `a_lo`, `a_hi` using `u` in [0, 1).
+/// Returns (picked_high, rescaled u). The caller guarantees `a_lo + a_hi > 0`.
+/// A side with zero area is never picked: `a_lo == 0` gives p = 0 (u < 0 is
+/// false) and `a_hi == 0` gives p = 1 (u < 1 is always true).
+#[inline]
+fn warp_pick(u: f64, a_lo: f64, a_hi: f64) -> (bool, f64) {
+    let p = a_lo / (a_lo + a_hi);
+    if u < p {
+        (false, (u / p).min(U_MAX))
+    } else {
+        (true, ((u - p) / (1.0 - p)).clamp(0.0, U_MAX))
+    }
+}
+
+/// Route points described by their own Sobol pair (u1, u2) down the exact-area
+/// quadtree. At every cell: split in x with u1 using the marginal area
+/// fractions, then split in y with u2 using the conditional area fractions
+/// inside the chosen x-half, and rescale both coordinates to the chosen child.
+/// For a cell fully inside the polygon all fractions are 1/2, the rescaling
+/// consumes exactly one bit of each coordinate, and the Sobol net is preserved.
+fn route_warp(
+    pts: &mut [WarpPoint],
+    rings: &[SignedRing],
+    cell: CellBounds,
+    depth: u32,
+) -> Result<(), String> {
+    if pts.is_empty() {
+        return Ok(());
+    }
+
+    let local_rings = clip_rings(rings, cell);
+    if local_rings.is_empty() {
+        return Err(format!(
+            "{} point(s) routed into a cell with no geometry (depth {depth})",
+            pts.len()
+        ));
+    }
+
+    if depth == LEAF_DEPTH {
+        let c = leaf_centroid(&local_rings, cell);
+        for p in pts.iter_mut() {
+            p.lon = c.x;
+            p.lat = c.y;
+        }
+        return Ok(());
+    }
+
+    let quads = split_cell(cell);
+    let [a0, a1, a2, a3] =
+        quads.map(|q| calculate_clipped_area(&local_rings, q.xmin, q.xmax, q.ymin, q.ymax));
+    let total = a0 + a1 + a2 + a3;
+    if !total.is_finite() || total <= 0.0 {
+        return Err(format!("no child cell with positive area (depth {depth})"));
+    }
+
+    let (a_xl, a_xh) = (a0 + a2, a1 + a3);
+
+    for p in pts.iter_mut() {
+        let (right, u1) = warp_pick(p.u1, a_xl, a_xh);
+        let (a_lo, a_hi) = if right { (a1, a3) } else { (a0, a2) };
+        let (top, u2) = warp_pick(p.u2, a_lo, a_hi);
+        p.u1 = u1;
+        p.u2 = u2;
+        p.q = right as u8 + 2 * top as u8;
+    }
+
+    // Group points by child; each child then recurses on its own slice.
+    pts.sort_unstable_by_key(|p| p.q);
+    let mut rest: &mut [WarpPoint] = pts;
+    for (k, quad) in quads.iter().enumerate() {
+        let i = rest.partition_point(|p| p.q as usize == k);
+        let (group, tail) = std::mem::take(&mut rest).split_at_mut(i);
+        rest = tail;
+        route_warp(group, &local_rings, *quad, depth + 1)?;
     }
     Ok(())
 }
@@ -699,9 +821,42 @@ pub fn sobol_sample_from_wkb(
 
             (lons, lats, indices, target_n as f64, 1.0)
         }
+        "warp" => {
+            let mut targets = Vec::with_capacity(target_n);
+            for i in 0..target_n {
+                let sx = owen_scramble(sobol_raw(i as u32, 0), seed_x);
+                let sy = owen_scramble(sobol_raw(i as u32, 1), seed_y);
+                targets.push(WarpPoint {
+                    id: i,
+                    u1: sx as f64 * INV_2_32,
+                    u2: sy as f64 * INV_2_32,
+                    q: 0,
+                    lon: f64::NAN,
+                    lat: f64::NAN,
+                });
+            }
+            route_warp(&mut targets, &signed_rings, root_cell, 1)
+                .map_err(|e| Error::Other(format!("warp routing failed: {e}")))?;
+            if targets
+                .iter()
+                .any(|t| !t.lon.is_finite() || !t.lat.is_finite())
+            {
+                return Err(Error::Other(
+                    "warp routing produced non-finite coordinates".into(),
+                ));
+            }
+            targets.sort_by_key(|t| t.id);
+
+            let lons: Vec<f64> = targets.iter().map(|t| t.lon).collect();
+            let lats: Vec<f64> = targets.iter().map(|t| s_to_lat(t.lat)).collect();
+            let indices: Vec<i32> = targets.iter().map(|t| t.id as i32).collect();
+
+            (lons, lats, indices, target_n as f64, 1.0)
+        }
         other => {
             return Err(Error::Other(format!(
-                "Unknown algorithm: '{other}'. Expected 'acceptance sampling' or 'routing'."
+                "Unknown algorithm: '{other}'. Expected 'acceptance sampling', \
+                 'routing' or 'warp'."
             )));
         }
     };
@@ -1007,6 +1162,129 @@ mod tests {
         };
         let g = Geometry::MultiPolygon(MultiPolygon(vec![sq(0.0), sq(50.0)]));
         assert_all_inside(&g, &route_u(&g, (0.0, 0.0, 51.0, 1.0), &grid_us(2000)));
+    }
+
+    fn warp_uv(geom: &Geometry, bb: (f64, f64, f64, f64), uv: &[(f64, f64)]) -> Vec<Point> {
+        let rings = extract_signed_rings(geom).unwrap();
+        let root = CellBounds {
+            xmin: bb.0,
+            xmax: bb.2,
+            ymin: lat_to_s(bb.1),
+            ymax: lat_to_s(bb.3),
+        };
+        let mut t: Vec<WarpPoint> = uv
+            .iter()
+            .enumerate()
+            .map(|(id, &(u1, u2))| WarpPoint {
+                id,
+                u1,
+                u2,
+                q: 0,
+                lon: f64::NAN,
+                lat: f64::NAN,
+            })
+            .collect();
+        route_warp(&mut t, &rings, root, 1).expect("warp routing failed");
+        t.sort_by_key(|p| p.id);
+        t.iter()
+            .map(|p| Point::new(p.lon, s_to_lat(p.lat)))
+            .collect()
+    }
+
+    fn grid_uv(n: usize) -> Vec<(f64, f64)> {
+        let top = 1.0 - f64::EPSILON / 2.0;
+        let mut v = Vec::new();
+        for i in 0..n {
+            for j in 0..n {
+                v.push(((i as f64 + 0.5) / n as f64, (j as f64 + 0.5) / n as f64));
+            }
+        }
+        v.extend([(0.0, 0.0), (top, top), (0.0, top), (top, 0.0)]);
+        v
+    }
+
+    #[test]
+    fn warp_is_identity_on_a_full_rectangle() {
+        let g = Geometry::Polygon(Polygon::new(
+            LineString::from(vec![
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (1.0, 1.0),
+                (0.0, 1.0),
+                (0.0, 0.0),
+            ]),
+            vec![],
+        ));
+        let (s0, s1) = (lat_to_s(0.0), lat_to_s(1.0));
+        let uv = grid_uv(40);
+        let pts = warp_uv(&g, (0.0, 0.0, 1.0, 1.0), &uv);
+        for (p, &(u1, u2)) in pts.iter().zip(&uv) {
+            assert!((p.x() - u1).abs() < 1e-7, "lon {} vs {}", p.x(), u1);
+            let want = s_to_lat(s0 + u2 * (s1 - s0));
+            assert!((p.y() - want).abs() < 1e-7, "lat {} vs {}", p.y(), want);
+        }
+    }
+
+    #[test]
+    fn warp_sliver_triangle_stays_inside() {
+        let g = Geometry::Polygon(Polygon::new(
+            LineString::from(vec![(0.0, 0.0), (10.0, 0.0), (10.0, 0.01), (0.0, 0.0)]),
+            vec![],
+        ));
+        assert_all_inside(&g, &warp_uv(&g, (0.0, 0.0, 10.0, 0.01), &grid_uv(45)));
+    }
+
+    #[test]
+    fn warp_respects_holes() {
+        let g = Geometry::Polygon(Polygon::new(
+            LineString::from(vec![
+                (0.0, 0.0),
+                (1.0, 0.0),
+                (1.0, 1.0),
+                (0.0, 1.0),
+                (0.0, 0.0),
+            ]),
+            vec![LineString::from(vec![
+                (0.25, 0.25),
+                (0.75, 0.25),
+                (0.75, 0.75),
+                (0.25, 0.75),
+                (0.25, 0.25),
+            ])],
+        ));
+        let pts = warp_uv(&g, (0.0, 0.0, 1.0, 1.0), &grid_uv(45));
+        assert_all_inside(&g, &pts);
+        assert!(pts
+            .iter()
+            .all(|p| !(p.x() > 0.26 && p.x() < 0.74 && p.y() > 0.26 && p.y() < 0.74)));
+    }
+
+    #[test]
+    fn warp_disjoint_parts_with_empty_gap() {
+        let sq = |x: f64| {
+            Polygon::new(
+                LineString::from(vec![
+                    (x, 0.0),
+                    (x + 1.0, 0.0),
+                    (x + 1.0, 1.0),
+                    (x, 1.0),
+                    (x, 0.0),
+                ]),
+                vec![],
+            )
+        };
+        let g = Geometry::MultiPolygon(MultiPolygon(vec![sq(0.0), sq(50.0)]));
+        assert_all_inside(&g, &warp_uv(&g, (0.0, 0.0, 51.0, 1.0), &grid_uv(45)));
+    }
+
+    #[test]
+    fn warp_pick_never_selects_an_empty_side() {
+        for &u in &[0.0, 0.3, 0.999_999, 1.0 - f64::EPSILON / 2.0] {
+            let (hi, r) = warp_pick(u, 0.0, 2.0);
+            assert!(hi && (0.0..1.0).contains(&r));
+            let (hi, r) = warp_pick(u, 2.0, 0.0);
+            assert!(!hi && (0.0..1.0).contains(&r));
+        }
     }
 
     #[test]

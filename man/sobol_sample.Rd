@@ -9,7 +9,7 @@ sobol_sample(
   n,
   seed,
   master_bbox = NULL,
-  algorithm = c("acceptance sampling", "routing")
+  algorithm = c("acceptance sampling", "routing", "warp")
 )
 }
 \arguments{
@@ -28,8 +28,18 @@ See the section "Master bounding box".}
 
 \item{algorithm}{Character string specifying the sampling approach:
 \itemize{
-\item \code{"acceptance sampling"}: Balanced Acceptance Sampling (BAS) bounding-box rejection.
-\item \code{"routing"}: Continuous GRTS exact-area quadtree routing (zero rejection).
+\item \code{"acceptance sampling"}: Balanced Acceptance Sampling (BAS)
+algorithm. Points are generated in the bounding box and are accepted
+when they fall inside the polygon.
+\item \code{"routing"}: Maps a 1D Morton-interleaved sequence down an
+exact-area quadtree (zero rejection, prefix stable). Ideal for sparse
+and narrow domains.
+\item \code{"warp"}: (2-D hierarchical sample warping): Keeps the two
+Sobol coordinates (u1, u2) separate and pushes them down the same
+exact-area quadtree as a binary-tree Rosenblatt transform (x-split
+with u1, then conditional y-split with u2, rescaling both after every
+level).
+Zero rejection, prefix stable.
 }}
 }
 \value{
@@ -88,7 +98,7 @@ failing (\code{"acceptance sampling"}).
 With the same \code{master_bbox}, \code{seed} and \code{algorithm}, the sequence domain is
 identical for different polygons.
 Spatial consistency across polygons holds for \code{"acceptance sampling"}, but
-not for \code{"routing"}, which depends on the exact area of each polygon
-(see \code{\link[=grts_sobol]{grts_sobol()}}).
+not for \code{"routing"} or \code{"warp"}, which depends on the exact area of each
+polygon.
 }
 
