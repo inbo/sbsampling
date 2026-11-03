@@ -1,10 +1,13 @@
-#' Generate a Spatially Balanced GRTS Sample using H3
+#' Generate a Spatially Balanced GRTS Sample using the H3 discrete global grid
 #'
 #' @description
 #' Generates a continuous Generalized Random-Tessellation Stratified (GRTS)
 #' sample.
 #' The function can accept either a geometry (`wkb`) to tessellate
 #' on the fly, or a pre-computed raw byte vector of H3 cells (`cells`).
+#' The sample for any domain is the first n cells of the global ordering that
+#' fall in it; balance degrades for domains that are thin relative to the sample
+#' spacing.
 #'
 #' @param wkb Raw byte vector representing Well-Known Binary (WKB) geometry in
 #' WGS84 (EPSG:4326).
@@ -23,7 +26,7 @@
 #'  this is ignored in the sampling step but can be corrected at the estimation
 #'  stage using the returned `area_m2` and `ip` columns.
 #'  If `TRUE`, Sequential Poisson Sampling is applied, making the effective
-#'  inclusion probability approximately proportional to area:
+#'  inclusion probability approximately proportional to H3 cell areas:
 #'  pi_i = n * area_i / sum(area).
 #' @param seed Numeric. A random seed passed to the Rust engine to ensure a
 #'   reproducible hierarchical shuffle. The seed must be a whole number,

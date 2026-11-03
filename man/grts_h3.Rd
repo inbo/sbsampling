@@ -2,7 +2,7 @@
 % Please edit documentation in R/grts_h3.R
 \name{grts_h3}
 \alias{grts_h3}
-\title{Generate a Spatially Balanced GRTS Sample using H3}
+\title{Generate a Spatially Balanced GRTS Sample using the H3 discrete global grid}
 \usage{
 grts_h3(
   wkb,
@@ -41,7 +41,7 @@ Cell areas vary by up to ~1.9x across the icosahedral projection;
 this is ignored in the sampling step but can be corrected at the estimation
 stage using the returned \code{area_m2} and \code{ip} columns.
 If \code{TRUE}, Sequential Poisson Sampling is applied, making the effective
-inclusion probability approximately proportional to area:
+inclusion probability approximately proportional to H3 cell areas:
 pi_i = n * area_i / sum(area).}
 }
 \value{
@@ -86,6 +86,9 @@ Generates a continuous Generalized Random-Tessellation Stratified (GRTS)
 sample.
 The function can accept either a geometry (\code{wkb}) to tessellate
 on the fly, or a pre-computed raw byte vector of H3 cells (\code{cells}).
+The sample for any domain is the first n cells of the global ordering that
+fall in it; balance degrades for domains that are thin relative to the sample
+spacing.
 }
 \examples{
 \dontrun{
