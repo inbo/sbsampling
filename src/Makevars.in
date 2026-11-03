@@ -3,9 +3,9 @@ LIBDIR = $(TARGET_DIR)/@LIBDIR@
 STATLIB = $(LIBDIR)/libsbsampling.a
 PKG_LIBS = -L$(LIBDIR) -lsbsampling
 
-all: $(SHLIB) rust_clean
+all: $(SHLIB) wrappers rust_clean
 
-.PHONY: $(STATLIB)
+.PHONY: $(STATLIB) wrappers
 
 $(SHLIB): $(STATLIB)
 
@@ -25,28 +25,26 @@ $(STATLIB):
 
 	if [ -d ./vendor ]; then \
 		echo "=== Using offline vendor directory ==="; \
-		mkdir -p $(CARGOTMP) && \
-		cp rust/vendor-config.toml $(CARGOTMP)/config.toml; \
+		mkdir -p "$(CARGOTMP)" && \
+		cp rust/vendor-config.toml "$(CARGOTMP)/config.toml"; \
 	elif [ -f ./rust/vendor.tar.xz ]; then \
 		echo "=== Using offline vendor tarball ==="; \
 		tar xf rust/vendor.tar.xz && \
-		mkdir -p $(CARGOTMP) && \
-		cp rust/vendor-config.toml $(CARGOTMP)/config.toml; \
+		mkdir -p "$(CARGOTMP)" && \
+		cp rust/vendor-config.toml "$(CARGOTMP)/config.toml"; \
 	fi
 
-	export CARGO_HOME=$(CARGOTMP) && \
+	export CARGO_HOME="$(CARGOTMP)" && \
 	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
-	@PANIC_EXPORTS@RUSTFLAGS="$(RUSTFLAGS) --print=native-static-libs" cargo build @CRAN_FLAGS@ --lib @PROFILE@ --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
+	@PANIC_EXPORTS@RUSTFLAGS="$(RUSTFLAGS) --print=native-static-libs" cargo build @CRAN_FLAGS@ --lib @PROFILE@ --manifest-path=./rust/Cargo.toml --target-dir="$(TARGET_DIR)" @TARGET@
 
-	export CARGO_HOME=$(CARGOTMP) && \
-	export PATH="$(PATH):$(HOME)/.cargo/bin" && \
-	cargo run @CRAN_FLAGS@ --bin document --manifest-path=./rust/Cargo.toml --target-dir $(TARGET_DIR) @TARGET@
-
-	# Always clean up CARGOTMP
-	rm -Rf $(CARGOTMP);
+wrappers: $(SHLIB)
+	if [ -n "$$ROXYGEN_PKG" ]; then \
+		"$(R_HOME)/bin/Rscript" ../tools/document.R $(R_PACKAGE_NAME) $(SHLIB) ../R/extendr-wrappers.R; \
+	fi
 
 rust_clean: $(SHLIB)
-	rm -Rf $(CARGOTMP) $(VENDOR_DIR) @CLEAN_TARGET@
+	rm -Rf "$(CARGOTMP)" "$(VENDOR_DIR)" @CLEAN_TARGET@
 
 clean:
-	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS) $(TARGET_DIR) $(VENDOR_DIR)
+	rm -Rf $(SHLIB) $(STATLIB) $(OBJECTS) "$(TARGET_DIR)" "$(VENDOR_DIR)"
