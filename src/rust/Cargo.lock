@@ -563,6 +563,7 @@ dependencies = [
  "h3o",
  "rand",
  "rand_pcg",
+ "rstar",
  "wkb",
 ]
 

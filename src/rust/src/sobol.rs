@@ -17,8 +17,10 @@ use crate::rng;
 use extendr_api::prelude::*;
 use geo::algorithm::bounding_rect::BoundingRect;
 use geo::algorithm::contains::Contains;
-use geo::{Coord, Geometry, LineString, Point, Rect};
+use geo::{Coord, Geometry, LineString, Point, Polygon, Rect};
 use geo_traits::to_geo::ToGeoGeometry;
+use rstar::primitives::{GeomWithData, Rectangle};
+use rstar::{RTree, RTreeObject, AABB};
 use wkb::reader::Wkb;
 
 const LON_MIN: f64 = -180.0;
@@ -326,12 +328,132 @@ fn bounding_rect_geom(geometry: &Geometry) -> Option<Rect> {
     }
 }
 
+#[cfg(test)]
 fn geometry_contains(geometry: &Geometry, point: &Point) -> bool {
     match geometry {
         Geometry::Polygon(p) => p.contains(point),
         Geometry::MultiPolygon(mp) => mp.contains(point),
         Geometry::GeometryCollection(gc) => gc.iter().any(|g| geometry_contains(g, point)),
         _ => false,
+    }
+}
+
+/// Polygons with at least this many vertices get their own edge index.
+const EDGE_INDEX_MIN_VERTICES: usize = 64;
+
+struct Edge {
+    a: [f64; 2],
+    b: [f64; 2],
+}
+
+impl RTreeObject for Edge {
+    type Envelope = AABB<[f64; 2]>;
+    fn envelope(&self) -> Self::Envelope {
+        AABB::from_corners(self.a, self.b)
+    }
+}
+
+enum PolyIndex {
+    Small(Polygon),
+    Large { xmax: f64, edges: RTree<Edge> },
+}
+
+impl PolyIndex {
+    fn contains(&self, x: f64, y: f64) -> bool {
+        match self {
+            PolyIndex::Small(p) => p.contains(&Point::new(x, y)),
+            PolyIndex::Large { xmax, edges } => {
+                let ray = AABB::from_corners([x, y], [*xmax, y]);
+                let mut inside = false;
+                for e in edges.locate_in_envelope_intersecting(&ray) {
+                    if (e.a[1] > y) != (e.b[1] > y) {
+                        let xi = e.a[0] + (y - e.a[1]) * (e.b[0] - e.a[0]) / (e.b[1] - e.a[1]);
+                        if x < xi {
+                            inside = !inside;
+                        }
+                    }
+                }
+                inside
+            }
+        }
+    }
+}
+
+/// Spatial index for point-in-geometry tests (any-of over all polygons).
+///
+/// Level 1: R-tree over polygon bounding boxes, so a candidate only touches
+/// polygons whose box contains it. Level 2: for polygons with many vertices,
+/// an R-tree over edges; containment is an even-odd ray cast to +x that only
+/// visits edges whose box meets the ray. Holes are handled by the even-odd rule.
+struct PointLocator {
+    polys: Vec<PolyIndex>,
+    tree: RTree<GeomWithData<Rectangle<[f64; 2]>, usize>>,
+}
+
+impl PointLocator {
+    fn new(geometry: &Geometry) -> Self {
+        let mut polys = Vec::new();
+        let mut boxes = Vec::new();
+        Self::collect(geometry, &mut polys, &mut boxes);
+        Self {
+            polys,
+            tree: RTree::bulk_load(boxes),
+        }
+    }
+
+    fn collect(
+        g: &Geometry,
+        polys: &mut Vec<PolyIndex>,
+        boxes: &mut Vec<GeomWithData<Rectangle<[f64; 2]>, usize>>,
+    ) {
+        match g {
+            Geometry::Polygon(p) => Self::add(p, polys, boxes),
+            Geometry::MultiPolygon(mp) => mp.0.iter().for_each(|p| Self::add(p, polys, boxes)),
+            Geometry::GeometryCollection(gc) => {
+                gc.iter().for_each(|g| Self::collect(g, polys, boxes))
+            }
+            _ => {}
+        }
+    }
+
+    fn add(
+        p: &Polygon,
+        polys: &mut Vec<PolyIndex>,
+        boxes: &mut Vec<GeomWithData<Rectangle<[f64; 2]>, usize>>,
+    ) {
+        let Some(r) = p.bounding_rect() else { return };
+        let n_vertices: usize = std::iter::once(p.exterior())
+            .chain(p.interiors())
+            .map(|ring| ring.0.len())
+            .sum();
+        let idx = if n_vertices >= EDGE_INDEX_MIN_VERTICES {
+            let edges: Vec<Edge> = std::iter::once(p.exterior())
+                .chain(p.interiors())
+                .flat_map(|ring| ring.0.windows(2))
+                .map(|w| Edge {
+                    a: [w[0].x, w[0].y],
+                    b: [w[1].x, w[1].y],
+                })
+                .collect();
+            PolyIndex::Large {
+                xmax: r.max().x,
+                edges: RTree::bulk_load(edges),
+            }
+        } else {
+            PolyIndex::Small(p.clone())
+        };
+        boxes.push(GeomWithData::new(
+            Rectangle::from_corners([r.min().x, r.min().y], [r.max().x, r.max().y]),
+            polys.len(),
+        ));
+        polys.push(idx);
+    }
+
+    #[inline]
+    fn contains(&self, x: f64, y: f64) -> bool {
+        self.tree
+            .locate_all_at_point(&[x, y])
+            .any(|e| self.polys[e.data].contains(x, y))
     }
 }
 
@@ -728,6 +850,9 @@ pub fn sobol_sample_from_wkb(
                     expected_scan, MAX_EXPECTED_SCAN
                 )));
             }
+            // Built after the scan-count guard so hopeless requests fail fast.
+            let locator = PointLocator::new(&geom);
+
             let mut lons = Vec::with_capacity(target_n);
             let mut lats = Vec::with_capacity(target_n);
             let mut indices = Vec::with_capacity(target_n);
@@ -762,13 +887,7 @@ pub fn sobol_sample_from_wkb(
                     continue;
                 }
 
-                if geometry_contains(
-                    &geom,
-                    &Point(Coord {
-                        x: cand_lon,
-                        y: cand_lat,
-                    }),
-                ) {
+                if locator.contains(cand_lon, cand_lat) {
                     lons.push(cand_lon);
                     lats.push(cand_lat);
                     indices.push(i32::try_from(scan_idx - 1).map_err(|_| {
@@ -1299,6 +1418,73 @@ mod tests {
         ];
         let rel = (shoelace_abs(&sq) - s * s).abs() / (s * s);
         assert!(rel < 1e-6, "relative area error {rel}");
+    }
+
+    // ── PointLocator must agree with geo's `contains` ────────────────────────
+
+    fn lcg(s: &mut u64) -> f64 {
+        *s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (*s >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    fn circle(cx: f64, cy: f64, r: f64, n: usize) -> LineString {
+        let mut v: Vec<(f64, f64)> = (0..n)
+            .map(|i| {
+                let t = i as f64 / n as f64 * std::f64::consts::TAU;
+                (cx + r * t.cos(), cy + r * t.sin())
+            })
+            .collect();
+        v.push(v[0]);
+        LineString::from(v)
+    }
+
+    fn assert_locator_matches_geo(g: &Geometry, bb: (f64, f64, f64, f64)) -> usize {
+        let loc = PointLocator::new(g);
+        let (mut s, mut hits) = (7u64, 0usize);
+        for _ in 0..20_000 {
+            let x = bb.0 + lcg(&mut s) * (bb.2 - bb.0);
+            let y = bb.1 + lcg(&mut s) * (bb.3 - bb.1);
+            let got = loc.contains(x, y);
+            assert_eq!(got, geometry_contains(g, &Point::new(x, y)), "({x}, {y})");
+            hits += got as usize;
+        }
+        hits
+    }
+
+    #[test]
+    fn locator_large_polygon_with_hole_matches_geo() {
+        let g = Geometry::Polygon(Polygon::new(
+            circle(0.0, 0.0, 10.0, 2000),
+            vec![circle(2.0, 1.0, 3.0, 500)],
+        ));
+        let hits = assert_locator_matches_geo(&g, (-11.0, -11.0, 11.0, 11.0));
+        assert!(hits > 1000 && hits < 19_000);
+    }
+
+    #[test]
+    fn locator_mixed_small_and_large_parts_match_geo() {
+        let sq = |x: f64| {
+            Polygon::new(
+                LineString::from(vec![
+                    (x, 0.0),
+                    (x + 1.0, 0.0),
+                    (x + 1.0, 1.0),
+                    (x, 1.0),
+                    (x, 0.0),
+                ]),
+                vec![],
+            )
+        };
+        let g = Geometry::MultiPolygon(MultiPolygon(vec![
+            sq(0.0),
+            sq(5.0),
+            Polygon::new(circle(20.0, 5.0, 4.0, 300), vec![]),
+            Polygon::new(circle(20.0, 5.0, 1.0, 300), vec![]), // overlapping part
+        ]));
+        let hits = assert_locator_matches_geo(&g, (-1.0, -1.0, 26.0, 11.0));
+        assert!(hits > 100);
     }
 }
 
