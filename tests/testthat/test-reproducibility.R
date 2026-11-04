@@ -224,7 +224,9 @@ h3_hex_to_raw <- function(hex) {
   hex <- paste0(strrep("0", 16 - nchar(hex)), hex)
   bytes <- vapply(
     hex,
-    function(h) strtoi(substring(h, seq(1, 15, by = 2), seq(2, 16, by = 2)), 16L),
+    function(h) {
+      strtoi(substring(h, seq(1, 15, by = 2), seq(2, 16, by = 2)), 16L)
+    },
     integer(8)
   )
   as.raw(as.vector(bytes[8:1, , drop = FALSE]))

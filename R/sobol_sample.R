@@ -28,7 +28,7 @@
 #'      when they fall inside the polygon.
 #'     \item \code{"warp"}: (2-D hierarchical sample warping): Keeps the two
 #'      Sobol coordinates (`u1`, `u2`) separate and pushes them down the same
-#'      exact-area quadtree as a binary-tree Rosenblatt transform (x-split
+#'      exact-area quadtree as a binary-trece Rosenblatt transform (x-split
 #'      with `u1`, then conditional y-split with `u2`, rescaling both after
 #'      every level).
 #'      Zero rejection, prefix stable.
@@ -79,20 +79,21 @@
 #'                     bounding box and imply higher computational cost.
 #' @export
 sobol_sample <- function(
-    wkb,
-    n,
-    seed,
-    master_bbox = NULL,
-    algorithm = c("acceptance sampling", "warp", "routing")
-  )
-{
+  wkb,
+  n,
+  seed,
+  master_bbox = NULL,
+  algorithm = c("acceptance sampling", "warp", "routing")
+) {
   algorithm <- match.arg(algorithm)
 
   stopifnot(
-    "Input 'wkb' must be a raw byte vector representing WKB geometry." = is.raw(wkb),
+    "Input 'wkb' must be a raw byte vector representing WKB geometry." =
+      is.raw(wkb),
     "`n` must be a whole number, > 0, not `NA`." = is_valid_n(n),
     "`seed` must be a whole number, >= 0, and < 2^53." = is_valid_seed(seed),
-    "`master_bbox` must be length 4 numeric in decimal degrees" = is_valid_bbox(master_bbox)
+    "`master_bbox` must be length 4 numeric in decimal degrees" =
+      is_valid_bbox(master_bbox)
   )
 
   res_df <- sobol_sample_from_wkb(

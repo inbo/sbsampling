@@ -26,7 +26,7 @@ library(patchwork)
 ```{r}
 #| label: helper-functions
 construct_index <- function(
-    reverse = FALSE, levels = 2, base = 4, randomise = TRUE, seed = NULL
+  reverse = FALSE, levels = 2, base = 4, randomise = TRUE, seed = NULL
 ) {
   stopifnot(levels >= 1, base >= 2, base <= 10)
   if (!is.null(seed)) set.seed(seed)
@@ -74,22 +74,22 @@ construct_index <- function(
 
 select_sample <- function(index, n, reverse = FALSE, u = runif(1),
                           aligned = FALSE) {
-  N <- length(index)
+  n_index <- length(index)
   levels <- nchar(index[1])
-  base <- round(N^(1 / levels))
+  base <- round(n_index^(1 / levels))
 
   # consecutive block on the REVERSE line, with a random (circular) start
   start <- if (aligned) {
-    n * floor(u * (N %/% n))   # start on a multiple of n: no wrapping
+    n * floor(u * (n_index %/% n))   # start on a multiple of n: no wrapping
   } else {
-    floor(u * N)               # any start: every cell has inclusion n / N
+    floor(u * n_index)               # any start: every cell has inclusion n / N
   }
-  sel_reverse <- (start + seq_len(n) - 1) %% N
+  sel_reverse <- (start + seq_len(n) - 1) %% n_index
 
   # position of every cell on the reverse line: address read with level 1 lowest
   digits <- matrix(
     as.integer(unlist(strsplit(attr(index, "address"), ""))),
-    nrow = N, byrow = TRUE
+    nrow = n_index, byrow = TRUE
   )
   reverse_pos <- drop(digits %*% base^(seq_len(levels) - 1))
 
@@ -159,6 +159,7 @@ The second way to order is by concatenating from level $h = H$ up to level $h = 
 Selecting a spatially balanced sampling is then done by selecting consecutive indices  (Theobald et al. 2007).
 
 ```{r}
+#| eval: FALSE
 index_to_matrix(l2) |> knitr::kable()
 index_to_matrix(l2reverse) |> knitr::kable()
 
@@ -177,17 +178,17 @@ position_matrix(l2reverse) |> knitr::kable()
 
 # builds the three panels of one ordering and returns them as a list
 grts_panels <- function(
-    reverse = FALSE, levels = 2, n = NULL, seed = 1, text_size = 3.5,
-    randomise = TRUE, u = runif(1), per_row = 32
+  reverse = FALSE, levels = 2, n = NULL, seed = 1, text_size = 3.5,
+  randomise = TRUE, u = runif(1), per_row = 32
 ) {
   index <- construct_index(reverse = reverse, levels = levels, seed = seed,
                            randomise = randomise)
   m <- index_to_matrix(index)
   side <- nrow(m)
-  N <- length(index)
+  n_index <- length(index)
   sel <- if (is.null(n)) integer(0) else select_sample(index, n, reverse, u)
   qlev <- max(levels - 1, 1)
-  per_row <- min(per_row, N)
+  per_row <- min(per_row, n_index)
 
   cells <- data.frame(
     path = as.vector(m),
@@ -200,7 +201,7 @@ grts_panels <- function(
 
   line <- data.frame(
     path = index,
-    pos = seq_len(N) - 1,
+    pos = seq_len(n_index) - 1,
     quad = factor(substr(index, 1, qlev), levels = levels(cells$quad)),
     address = attr(index, "address")
   )
@@ -210,10 +211,10 @@ grts_panels <- function(
 
   o <- cells[order(cells$pos), ]
   seg <- data.frame(
-    x    = o$x[-N] + 0.1 * (o$x[-1] - o$x[-N]),
-    y    = o$y[-N] + 0.1 * (o$y[-1] - o$y[-N]),
-    xend = o$x[-N] + 0.9 * (o$x[-1] - o$x[-N]),
-    yend = o$y[-N] + 0.9 * (o$y[-1] - o$y[-N])
+    x    = o$x[-n_index] + 0.1 * (o$x[-1] - o$x[-n_index]),
+    y    = o$y[-n_index] + 0.1 * (o$y[-1] - o$y[-n_index]),
+    xend = o$x[-n_index] + 0.9 * (o$x[-1] - o$x[-n_index]),
+    yend = o$y[-n_index] + 0.9 * (o$y[-1] - o$y[-n_index])
   )
 
   hierarchy <- lapply(seq_len(levels), function(l) {
@@ -240,10 +241,10 @@ grts_panels <- function(
   }
   order_name <- if (reverse) "reverse hierarchical" else "hierarchical"
 
-  p1 <- ggplot(cells, aes(x, y)) +
-    geom_tile(aes(fill = quad), colour = "white", alpha = 0.8) +
+  p1 <- ggplot(cells, aes(.data$x, .data$y)) +
+    geom_tile(aes(fill = .data$quad), colour = "white", alpha = 0.8) +
     hierarchy + frame +
-    geom_text(aes(label = path), size = text_size) +
+    geom_text(aes(label = .data$path), size = text_size) +
     coord_fixed() + fill_scale + theme_void() +
     labs(
       title = "1. 2D: quadrant paths",
@@ -251,12 +252,12 @@ grts_panels <- function(
     )
 
   p2 <- ggplot(line, aes(col, 0)) +
-    geom_tile(aes(fill = quad), colour = "white", alpha = 0.8) +
+    geom_tile(aes(fill = .data$quad), colour = "white", alpha = 0.8) +
     mark(line, h = 1) +
-    geom_text(aes(label = path), size = text_size) +
-    geom_text(aes(y = 0.9, label = address),
+    geom_text(aes(label = .data$path), size = text_size) +
+    geom_text(aes(y = 0.9, label = .data$address),
               size = text_size, colour = "grey30") +
-    geom_text(aes(y = -0.9, label = pos),
+    geom_text(aes(y = -0.9, label = .data$pos),
               size = text_size, colour = "grey30") +
     facet_wrap(~ row, ncol = 1) +
     coord_fixed(ylim = c(-1.3, 1.3)) + fill_scale + theme_void() +
@@ -268,16 +269,16 @@ grts_panels <- function(
       subtitle = "top = address, middle = path, bottom = position"
     )
 
-  p3 <- ggplot(cells, aes(x, y)) +
-    geom_tile(aes(fill = quad), colour = "white", alpha = 0.8) +
+  p3 <- ggplot(cells, aes(.data$x, .data$y)) +
+    geom_tile(aes(fill = .data$quad), colour = "white", alpha = 0.8) +
     hierarchy + frame +
     geom_segment(
-      data = seg, aes(xend = xend, yend = yend),
+      data = seg, aes(xend = .data$xend, yend = .data$yend),
       colour = "grey20", alpha = 0.6, linewidth = 0.4,
       arrow = arrow(length = unit(1.5, "mm"))
     ) +
     mark(cells) +
-    geom_text(aes(label = pos), size = text_size, fontface = "bold") +
+    geom_text(aes(label = .data$pos), size = text_size, fontface = "bold") +
     coord_fixed() + fill_scale + theme_void() +
     labs(
       title = paste0("3. Position in matrix\n(", order_name, ")"),
@@ -289,8 +290,8 @@ grts_panels <- function(
 
 # both orderings, with the shared 2D map once, centred between the two rows
 showcase_grts_both <- function(
-    levels = 2, n = NULL, seed = 1, text_size = 3.5,
-    randomise = TRUE, start = runif(1), per_row = 32
+  levels = 2, n = NULL, seed = 1, text_size = 3.5,
+  randomise = TRUE, start = runif(1), per_row = 32
 ) {
   hier <- grts_panels(
     FALSE, levels, n, seed, text_size, randomise, start, per_row
@@ -320,7 +321,10 @@ showcase_grts_both <- function(
 
 
 ```{r}
-#| label: example-level2
+#| label: fig-example-level2
+#| fig-cap: GRTS maps 2D space into a 1D randomised ordered list allowing to
+#|   select spatially balanced samples either by a systematic jump through the
+#|   list (top) or a consecutive subset (bottom). 
 #| fig-width: 16
 #| fig-height: 10
 #| out-width: "100%"
@@ -394,7 +398,9 @@ This property provides strict Latin Hypercube stratification along both axes sim
 
 ```{r}
 #| label: fig-elementary-intervals
-#| fig-cap: Example of an Owen scrambled 2D sample of size 16. Each elementary interval of area 1/16 contains exactly one point. The numbers show the order of selection.
+#| fig-cap: Example of an Owen scrambled 2D sample of size 16.
+#|   Each elementary interval of area 1/16 contains exactly one point.
+#|  The numbers show the order of selection.
 create_unit_square <- function() {
   poly <- sf::st_polygon(
     list(matrix(c(0, 0, 0, 1, 1, 1, 1, 0, 0, 0), ncol = 2, byrow = TRUE))
@@ -416,12 +422,16 @@ sbs_to_sf <- function(df) {
 make_dyadic_hierarchy <- function(d1, d2, base_linewidth = 1.5) {
   max_l <- max(d1, d2)
   if (max_l == 0) return(list())
-  
+
   lapply(seq_len(max_l), function(l) {
     b <- seq(0, 1, length.out = 2^l + 1)[-c(1, 2^l + 1)]
     c(
-      if (l <= d1) list(geom_vline(xintercept = b, linewidth = base_linewidth / l)),
-      if (l <= d2) list(geom_hline(yintercept = b, linewidth = base_linewidth / l))
+      if (l <= d1) {
+        list(geom_vline(xintercept = b, linewidth = base_linewidth / l))
+      },
+      if (l <= d2) {
+        list(geom_hline(yintercept = b, linewidth = base_linewidth / l))
+      }
     )
   })
 }
@@ -436,11 +446,11 @@ h_0_4 <- make_dyadic_hierarchy(0, 4)
 wkb_unit_square <- create_test_wkb()
 example1 <- sobol_sample(
   wkb = wkb_unit_square, n = 16, seed = 213,
-  algorithm = "routing") |> 
+  algorithm = "routing"
+) |>
   sbs_to_sf()
 
-
-p1 <- example1 |> 
+p1 <- example1 |>
   ggplot() +
   geom_sf(data = create_unit_square()) +
   h_2_2 +
@@ -451,28 +461,28 @@ p1 <- example1 |>
   ) +
   theme_void()
 
-p2 <- example1 |> 
+p2 <- example1 |>
   ggplot() +
   geom_sf(data = create_unit_square()) +
   h_3_1 +
   geom_sf(colour = "red") +
   theme_void()
 
-p3 <- example1 |> 
+p3 <- example1 |>
   ggplot() +
   geom_sf(data = create_unit_square()) +
   h_1_3 +
   geom_sf(colour = "red") +
   theme_void()
 
-p4 <- example1 |> 
+p4 <- example1 |>
   ggplot() +
   geom_sf(data = create_unit_square()) +
   h_0_4 +
   geom_sf(colour = "red") +
   theme_void()
 
-p5 <- example1 |> 
+p5 <- example1 |>
   ggplot() +
   geom_sf(data = create_unit_square()) +
   h_4_0 +
@@ -483,11 +493,10 @@ design <- "
 AABC
 AADE
 "
-list(p1, p2, p3, p4, p5)  |> 
-  wrap_plots(design = design) |> 
-  print() |> 
+list(p1, p2, p3, p4, p5) |>
+  wrap_plots(design = design) |>
+  print() |>
   suppressWarnings()
-
 ```
 
 
@@ -516,7 +525,7 @@ $$\text{lon} = \text{lon}_{\min} + u \cdot (\text{lon}_{\max} - \text{lon}_{\min
 $$\sin(\text{lat}) = \sin(\text{lat}_{\min}) + v \cdot (\sin(\text{lat}_{\max}) - \sin(\text{lat}_{\min}))$$
 
 where $(u, v) \in [0, 1)^2$ are the scrambled Sobol coordinates.
-Because surface area on a sphere is proportional to $\Delta \text{lon} \cdot \Delta \sin(\text{lat})$, the expected point density per square kilometer is strictly uniform across the entire globe, operating directly on unprojected WGS-84 decimal degrees.
+Because surface area on a sphere is proportional to $\Delta \text{lon} \cdot \Delta \sin(\text{lat})$, the expected point density per square kilometre is strictly uniform across the entire globe, operating directly on unprojected WGS-84 decimal degrees.
 
 ## Algorithm variants
 
@@ -550,9 +559,9 @@ Both algorithms give the same result if the `wkb` is rectangular.
 
 ## References
 
-Burley B. (2020). Practical hash-based owen scrambling. Journal of Computer Graphics Techniques (JCGT) 10 (4): 1-20.
+Burley B. (2020). Practical hash-based Owen scrambling. Journal of Computer Graphics Techniques 10 (4): 1-20.
 
-Joe S. & Kuo F.Y. (2008). Constructing sobol sequences with better two-dimensional projections. SIAM Journal on Scientific Computing 30 (5): 2635-2654. https://doi.org/10.1137/070709359.
+Joe S. & Kuo F.Y. (2008). Constructing Sobol sequences with better two-dimensional projections. SIAM Journal on Scientific Computing 30 (5): 2635-2654. https://doi.org/10.1137/070709359.
 
 Owen A.B. (2003). Variance with alternative scramblings of digital nets. ACM Transactions on Modeling and Computer Simulation 13 (4): 363-378. https://doi.org/10.1145/945511.945518.
 
@@ -564,4 +573,4 @@ Stevens D.L. & Olsen A.R. (2004). Spatially balanced sampling of natural resourc
 
 Theobald D., Stevens D., White D., Urquhart N., Olsen A. & Norman J. (2007). Using GIS to Generate Spatially Balanced Random Survey Designs for Natural Resource Applications. Environmental Management 40 (1): 134-146.
 
-Vegdahl N. (2021). Psychopath Renderer | Building a Better LK Hash. https://psychopath.io/post/2021_01_30_building_a_better_lk_hash (geraadpleegd 15 oktober 2026).
+Vegdahl N. (2021). Psychopath Renderer | Building a Better LK Hash. https://psychopath.io/post/2021_01_30_building_a_better_lk_hash (consulted 15 October 2026).
