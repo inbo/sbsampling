@@ -26,15 +26,15 @@
 #'     \item \code{"acceptance sampling"}: Balanced Acceptance Sampling (BAS)
 #'      algorithm. Points are generated in the bounding box and are accepted
 #'      when they fall inside the polygon.
+#'     \item \code{"warp"}: (2-D hierarchical sample warping): Keeps the two
+#'      Sobol coordinates (`u1`, `u2`) separate and pushes them down the same
+#'      exact-area quadtree as a binary-tree Rosenblatt transform (x-split
+#'      with `u1`, then conditional y-split with `u2`, rescaling both after
+#'      every level).
+#'      Zero rejection, prefix stable.
 #'     \item \code{"routing"}: Maps a 1D Morton-interleaved sequence down an
 #'      exact-area quadtree (zero rejection, prefix stable). Ideal for sparse
 #'      and narrow domains.
-#'     \item \code{"warp"}: (2-D hierarchical sample warping): Keeps the two
-#'      Sobol coordinates (u1, u2) separate and pushes them down the same
-#'      exact-area quadtree as a binary-tree Rosenblatt transform (x-split
-#'      with u1, then conditional y-split with u2, rescaling both after every
-#'      level).
-#'      Zero rejection, prefix stable.
 #'   }
 #'
 #' @section Master bounding box:
@@ -83,7 +83,7 @@ sobol_sample <- function(
     n,
     seed,
     master_bbox = NULL,
-    algorithm = c("acceptance sampling", "routing", "warp")
+    algorithm = c("acceptance sampling", "warp", "routing")
   )
 {
   algorithm <- match.arg(algorithm)
