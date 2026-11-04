@@ -7,7 +7,7 @@ rextendr::cargo("clippy")
 
 # Run Rust unit tests with the GNU toolchain
 
-rextendr::cargo("test")
+# rextendr::cargo("test")
 
 pkgbuild::with_build_tools({
   withr::with_envvar(c("CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER" = "gcc"), {

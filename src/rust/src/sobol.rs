@@ -225,13 +225,31 @@ fn collect_rings(geometry: &Geometry, rings: &mut Vec<SignedRing>) -> extendr_ap
                 collect_rings(g, rings)?;
             }
         }
-        _ => {
-            return Err(Error::Other(
-                "Geometry must be POLYGON or MULTIPOLYGON".into(),
-            ))
+        other => {
+            return Err(Error::Other(format!(
+                "Unsupported geometry type: {}. Geometry must be POLYGON or \
+                 MULTIPOLYGON (buffer lines or points into polygons first).",
+                geometry_type_name(other)
+            )))
         }
     }
     Ok(())
+}
+
+/// Human-readable name of a `geo::Geometry` variant, for error messages.
+fn geometry_type_name(geom: &Geometry) -> &'static str {
+    match geom {
+        Geometry::Point(_) => "Point",
+        Geometry::Line(_) => "Line",
+        Geometry::LineString(_) => "LineString",
+        Geometry::Polygon(_) => "Polygon",
+        Geometry::MultiPoint(_) => "MultiPoint",
+        Geometry::MultiLineString(_) => "MultiLineString",
+        Geometry::MultiPolygon(_) => "MultiPolygon",
+        Geometry::GeometryCollection(_) => "GeometryCollection",
+        Geometry::Rect(_) => "Rect",
+        Geometry::Triangle(_) => "Triangle",
+    }
 }
 
 fn extract_signed_rings(geometry: &Geometry) -> extendr_api::Result<Vec<SignedRing>> {
@@ -767,8 +785,12 @@ pub fn sobol_sample_from_wkb(
         Wkb::try_new(wkb_bytes).map_err(|e| Error::Other(format!("WKB parse failed: {e}")))?;
     let geom = wkb_obj.to_geometry();
 
+    // Validate the geometry type first, so that e.g. a MULTILINESTRING gets a
+    // clear error instead of a misleading "no bounding box" failure.
+    let signed_rings = extract_signed_rings(&geom)?;
+
     let bbox_geom = bounding_rect_geom(&geom)
-        .ok_or_else(|| Error::Other("Could not compute bounding box".into()))?;
+        .ok_or_else(|| Error::Other("Geometry is empty: it has no coordinates".into()))?;
 
     let (poly_xmin, poly_ymin, poly_xmax, poly_ymax) = (
         bbox_geom.min().x,
@@ -821,7 +843,6 @@ pub fn sobol_sample_from_wkb(
     // Exact polygon area (equal-area plane) inside the sequence domain. Used by
     // both algorithms: routing needs it as the CDF total, acceptance uses it to
     // fail fast on empty overlap and on hopeless scan costs.
-    let signed_rings = extract_signed_rings(&geom)?;
     let total_area = calculate_clipped_area(
         &signed_rings,
         root_cell.xmin,
@@ -1418,6 +1439,24 @@ mod tests {
         ];
         let rel = (shoelace_abs(&sq) - s * s).abs() / (s * s);
         assert!(rel < 1e-6, "relative area error {rel}");
+    }
+
+    #[test]
+    fn non_polygonal_geometry_is_rejected_with_its_type_name() {
+        let mls = Geometry::MultiLineString(geo::MultiLineString(vec![LineString::from(vec![
+            (0.0, 0.0),
+            (1.0, 1.0),
+        ])]));
+        assert_eq!(geometry_type_name(&mls), "MultiLineString");
+        assert!(extract_signed_rings(&mls).is_err());
+
+        let pt = Geometry::Point(Point::new(0.0, 0.0));
+        assert!(extract_signed_rings(&pt).is_err());
+
+        let mixed = Geometry::GeometryCollection(geo::GeometryCollection(vec![Geometry::Point(
+            Point::new(0.0, 0.0),
+        )]));
+        assert!(extract_signed_rings(&mixed).is_err());
     }
 
     // ── PointLocator must agree with geo's `contains` ────────────────────────
