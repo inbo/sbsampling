@@ -28,7 +28,7 @@
 #'      when they fall inside the polygon.
 #'     \item \code{"warp"}: (2-D hierarchical sample warping): Keeps the two
 #'      Sobol coordinates (`u1`, `u2`) separate and pushes them down the same
-#'      exact-area quadtree as a binary-trece Rosenblatt transform (x-split
+#'      exact-area quadtree as a binary-tree Rosenblatt transform (x-split
 #'      with `u1`, then conditional y-split with `u2`, rescaling both after
 #'      every level).
 #'      Zero rejection, prefix stable.

@@ -324,7 +324,7 @@ showcase_grts_both <- function(
 #| label: fig-example-level2
 #| fig-cap: GRTS maps 2D space into a 1D randomised ordered list allowing to
 #|   select spatially balanced samples either by a systematic jump through the
-#|   list (top) or a consecutive subset (bottom). 
+#|   list (top) or a consecutive subset (bottom).
 #| fig-width: 16
 #| fig-height: 10
 #| out-width: "100%"
