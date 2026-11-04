@@ -33,45 +33,47 @@ coverage](https://codecov.io/gh/inbo/sbsampling/branch/main/graph/badge.svg)](ht
 <!-- description: start -->
 
 Implements spatially balanced sampling algorithms on the sphere using
-sequence-based randomization. It offers two distinct methodologies:
-exact-area continuous sampling from vector geodata utilizing
-Owen-scrambled Sobol sequences, and discrete spatial sampling via the H3
-global grid system. Both approaches operate natively on spherical
-geographic coordinates, eliminating the need for map projections while
-ensuring spatially well-distributed survey points.
-<!-- description: end -->
+sequence-based randomization. It offers both continuous sampling from
+vector polygon geodata utilizing Owen-scrambled Sobol sequences, and
+discrete spatial sampling via the H3 global grid system. Both approaches
+operate natively on spherical geographic coordinates, eliminating the
+need for map projections while ensuring spatially well-distributed
+survey points. <!-- description: end -->
 
 The `sbsampling` package implements sequence-based spatially balanced
 sampling designs where the input sampling frame is in spherical
 coordinates (typically a vector polygon or multi-polygon). The functions
 either directly sample from the continuous spatial domain or leverage
 the [H3](https://h3geo.org/) discrete global grid system for indexing
-spatial data into a hexagonal grid. For the latter, the package provides
-spatially balanced sampling via an adaptation of the Generalized Random
-Tessellation Stratified (GRTS) algorithm. For the former, two
-implementations are provided. One, is a modification of the balanced
-acceptance sampling (BAS) algorithm (Robertson) whereby points are drawn
-from a 2-D Owen-scrambled Sobol sequence and accepted when inside the
-sampling frame. Its domain of applicability should be restricted to
-relatively compact spatial domains. For non-compact spatial domains, we
-provide an adaptation of the GRTS algorithm based on the Sobol sequence
-that does not need a discretization step or rejection sampling.
+spatial data into a hexagonal grid.
 
-All algorithms implemented in the package are sequence-based, meaning
-that they are especially suitable for so-called master samples. For a
-given given random seed (and H3 resolution in case H3 discretization),
-all sampling units are deterministically sorted such that consecutively
-ordered sampling units are spatially balanced samples for a given area
-on earth.
+For sampling from the [H3](https://h3geo.org/) discrete global grid
+system, the package provides spatially balanced sampling via an
+adaptation of the Generalized Random Tessellation Stratified (GRTS)
+algorithm. For a given given random seed and H3 resolution, all sampling
+units are deterministically sorted such that consecutively ordered
+sampling units are spatially balanced samples for a given area on earth,
+which makes it suitable for so-called master sampling applications.
 
-The implementation is written in [`Rust`](https://rust-lang.org/) with
-the aid of `rextendr`. The package is developed with the aid of large
-language models Google Gemini pro and Antropic Claude Sonnet 4.6. The
-former for brainstorming and code writing, the latter for a final critic
-and improvements on the code base. R code is kept to a bare minimum and
-the package has zero R dependencies. All algorithms are thoroughly
-tested, both with unit testing and simulations. The implementation is
-lightweight, cross-platform, fast and memory friendly.
+For direct sampling from continuous spatial domains without
+discretization, several implementations are provided. One, is a
+modification of the balanced acceptance sampling (BAS) algorithm
+(Robertson) whereby points are drawn from a 2-D Owen-scrambled Sobol
+sequence and accepted when inside the sampling frame. Its domain of
+applicability should be restricted to relatively compact spatial
+domains. It is suitable for so-called master sampling applications. For
+non-compact spatial domains, the package provides alternatives that
+directly route or warp the 2-D Owen-scrambled Sobol sequence inside a
+polygon without rejection sampling.
+
+The implementations are written in [`Rust`](https://rust-lang.org/) and
+wrapped into an R package using
+[`rextendr`](https://extendr.rs/rextendr/). The package is developed
+with the aid of large language models Google Gemini and Antropic Claude
+Sonnet. R code is kept to a bare minimum and the package has zero R
+dependencies. All algorithms are thoroughly tested, both with unit
+testing and simulations. The implementation is lightweight,
+cross-platform, fast and memory friendly.
 
 ## Installation
 
@@ -87,9 +89,9 @@ remotes::install_git("https://github.com/inbo/sbsampling")
 
 ### Sample from a continuous spatial domain
 
-We extract Ashe county from the North Carolina state dataset that ships
-with the `sf` package as an example spatial domain (sampling frame) from
-which we want to draw a spatially balanced sample.
+Let us extract Ashe county from the North Carolina state dataset that
+ships with the `sf` package as an example spatial domain (sampling
+frame) from which we want to draw a spatially balanced sample.
 
 ``` r
 library(sbsampling)
@@ -134,37 +136,59 @@ text(
 
 <img src="man/figures/readme-plot-bas-1.png" alt="" width="100%" />
 
-Alternatively, we can use the Sobol-sequence based GRTS-like algorithm,
-which uses exact area-routing of the randomized sequence inside the
-`wkb` geometry:
+Alternatively, we can use one of the Owen scrambled Sobol-sequence based
+algorithms, which use exact area-warping or routing of the randomized
+sequence inside the `wkb` geometry:
 
 ``` r
-grts_sample <- sobol_sample(
+routed_sample <- sobol_sample(
   wkb = ashe_wkb, n = 20, seed = 789, algorithm = "routing"
 )
-grts_sample_sf <- sf::st_as_sf(
-  grts_sample, coords = c("lon", "lat"), crs = 4326
+warped_sample <- sobol_sample(
+  wkb = ashe_wkb, n = 20, seed = 789, algorithm = "warp"
+)
+routed_sample_sf <- sf::st_as_sf(
+  routed_sample, coords = c("lon", "lat"), crs = 4326
+)
+warped_sample_sf <- sf::st_as_sf(
+  warped_sample, coords = c("lon", "lat"), crs = 4326
 )
 ```
 
-Visualizing the sample: note that the `rank` has no gaps because the
-adapted GRTS algorithm maps the sequence directly inside the geometry’s
-exact area.
+Visualizing the samples: note that the `rank` has no gaps because the
+algorithms map the sequence directly inside the geometry’s exact area.
 
 ``` r
+op <- par(mfrow = c(1,2), pty = "m")
 plot(ashe$`_ogr_geometry_`)
-plot(grts_sample_sf$geometry, add = TRUE)
-coords <- sf::st_coordinates(grts_sample_sf)
+plot(warped_sample_sf$geometry, add = TRUE)
+coords <- sf::st_coordinates(warped_sample_sf)
 text(
   x = coords[, 1], 
   y = coords[, 2], 
-  labels = grts_sample_sf$rank, 
+  labels = warped_sample_sf$rank, 
   pos = 3,
   cex = 0.8
 )
+title("warped")
+plot(ashe$`_ogr_geometry_`)
+plot(routed_sample_sf$geometry, add = TRUE)
+coords <- sf::st_coordinates(routed_sample_sf)
+text(
+  x = coords[, 1], 
+  y = coords[, 2], 
+  labels = routed_sample_sf$rank, 
+  pos = 3,
+  cex = 0.8
+)
+title("routed")
 ```
 
-<img src="man/figures/readme-plot-grts-1.png" alt="" width="100%" />
+<img src="man/figures/readme-plot-warp-rout-1.png" alt="" width="100%" />
+
+``` r
+par(op)
+```
 
 ### Sample from the H3 discrete global grid system
 
