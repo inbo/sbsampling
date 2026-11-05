@@ -32,18 +32,74 @@ const DENSIFY_DEG: f64 = 0.01;
 /// sampling variance. At ~8.5e6 scans/s, 1e9 is about 2 minutes.
 /// Must stay well below i32::MAX (the `rank` column is an R integer).
 const MAX_EXPECTED_SCAN: f64 = 1.0e9;
+
 // ---------------------------------------------------------------------------
-// Coordinate Transforms (Equal-Area on Sphere)
+// Angular coordinate transforms (Equal-Area on WGS-84 ellipsoid)
 // ---------------------------------------------------------------------------
+
+// WGS-84 ellipsoid constants:
+// f = 1 / 298.257223563
+// e^2 = 2f - f^2 = 0.0066943799901413165
+// e   = sqrt(e^2) = 0.08181919084262149
+const WGS84_E2: f64 = 0.0066943799901413165;
+const WGS84_E: f64 = 0.08181919084262149;
+const WGS84_ONE_MINUS_E2: f64 = 1.0 - WGS84_E2;
+// q_p = 1 + (1-e^2)/e * atanh(e)
+//     = 1 + (1-e^2)/(2e) * ln((1+e)/(1-e))
+//   = 1.9955310875028373 (verified: matches q(pi/2) to 1 ULP)
+const WGS84_QP: f64 = 1.9955310875028373;
+
+/// Evaluates Snyder's q(phi) for the WGS-84 ellipsoid:
+/// q = (1 - e^2) * (sin(phi) / (1 - e^2 * sin^2(phi)) - 1/(2e) * ln((1 - e*sin(phi)) / (1 + e*sin(phi))))
+#[inline]
+fn wgs84_q(sin_phi: f64) -> f64 {
+    let es = WGS84_E * sin_phi;
+    let term1 = sin_phi / (1.0 - WGS84_E2 * sin_phi * sin_phi);
+    // (1 / 2e) * ln((1 - es) / (1 + es)) = -atanh(es) / e
+    let term2 = -es.atanh() / WGS84_E;
+    WGS84_ONE_MINUS_E2 * (term1 - term2)
+}
+
+/// Derivative dq/dphi = 2 * (1 - e^2) * cos(phi) / (1 - e^2 * sin^2(phi))^2
+#[inline]
+fn wgs84_dq_dphi(sin_phi: f64, cos_phi: f64) -> f64 {
+    let denom = 1.0 - WGS84_E2 * sin_phi * sin_phi;
+    2.0 * WGS84_ONE_MINUS_E2 * cos_phi / (denom * denom)
+}
 
 #[inline]
 fn lat_to_s(lat_deg: f64) -> f64 {
-    lat_deg.to_radians().sin()
+    let phi = lat_deg.to_radians();
+    let sin_phi = phi.sin();
+    // Authalic coordinate s = sin(beta) = q(phi) / q_p
+    (wgs84_q(sin_phi) / WGS84_QP).clamp(-1.0, 1.0)
 }
 
 #[inline]
 fn s_to_lat(s: f64) -> f64 {
-    s.clamp(-1.0, 1.0).asin().to_degrees()
+    let s_clamped = s.clamp(-1.0, 1.0);
+    let target_q = s_clamped * WGS84_QP;
+
+    // Initial estimate using authalic latitude beta = asin(s)
+    let mut phi = s_clamped.asin();
+
+    // Newton-Raphson iteration: f(phi) = q(phi) - target_q = 0
+    // Converges to machine precision in 2-3 iterations due to tiny e^2
+    for _ in 0..4 {
+        let (sin_phi, cos_phi) = phi.sin_cos();
+        if cos_phi.abs() < 1e-12 {
+            break; // Exactly or virtually at the pole
+        }
+        let f = wgs84_q(sin_phi) - target_q;
+        let df = wgs84_dq_dphi(sin_phi, cos_phi);
+        let delta = f / df;
+        phi -= delta;
+        if delta.abs() < 1e-12 {
+            break;
+        }
+    }
+
+    phi.to_degrees()
 }
 
 // ---------------------------------------------------------------------------
