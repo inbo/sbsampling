@@ -1,0 +1,33 @@
+on:
+  push:
+    branches:
+      - main
+      - master
+permissions:
+  contents: write
+
+name: "check package on main with checklist"
+
+jobs:
+  check-package:
+    runs-on: ubuntu-latest
+    name: "check package"
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-gnu
+
+      - name: Cache Rust workspace
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 #v2.9.2
+        with:
+          workspaces: "src/rust"
+
+      - uses: inbo/actions/check_pkg@main
+        with:
+          cmd: |
+            sudo apt-get install -y libudunits2-dev libgdal-dev libgeos-dev libproj-dev

@@ -1,0 +1,161 @@
+---
+title: "Spatially balanced sampling from the H3 discrete global grid system using the GRTS algorithm"
+vignette: >
+  %\VignetteIndexEntry{Spatially balanced sampling from the H3 discrete global grid system using the GRTS algorithm}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: '#>'
+---
+
+# Summary
+
+H3 is a hierarchical hexagonal grid covering the globe.
+Given a global random seed and an H3 resolution, every H3 cell on Earth gets assigned a unique sort index.
+Selecting cells in the order of this index results in a spatially balanced sample.
+The `sbsampling` package calculates both the grid and these sort indices mathematically on the fly.
+This allows you to draw reproducible GRTS samples from hundreds of millions of spatial locations, without exceeding your computer's RAM or requiring heavy databases.
+
+# The H3 discrete global grid system
+
+The [H3](https://h3geo.org/) discrete global grid system is a geospatial indexing system developed at Uber to efficiently map latitude-longitude coordinates to discrete cells anywhere on Earth.
+
+H3 is a hierarchical tessellation based on a hexagonal grid.
+At its lowest resolution (Resolution 0), H3 tiles the Earth into 122 base cells: 110 hexagons and 12 pentagons.
+The pentagons are necessary because a perfect sphere cannot be tiled using exclusively hexagons.
+To minimize distortion for spatial analysis, the grid is specifically oriented so that all 12 pentagons fall entirely within the oceans.
+
+H3 provides 15 additional [resolutions](https://h3geo.org/docs/core-library/restable/) of increasing precision, with the highest resolution cells covering approximately 1 m². The hierarchical tiling results in strict parent-child relationships, which are encoded directly into the cell's ID number.
+Every parent hexagon cell has seven hexagon children.
+Thus, when moving from resolution $k$ to $k+1$, the cell area will be approximately seven times smaller.
+
+The H3 grid is a pure mathematical coordinate system.
+Converting a GPS coordinate into an H3 cell, finding a cell's parent, or locating its neighbours involves no database lookups. 
+It is calculated purely on the fly using spherical geometry and bitwise mathematics.
+
+# The Generalised Random Tesselation Stratified algorithm (GRTS) and reverse hierarchical ordering
+
+GRTS is an algorithm developed by Stevens and Olsen (2004) to generate spatially balanced probability samples.
+
+If we drew a Simple Random Sample (SRS) of grid cells across a landscape, sample-to-sample variance would be high because with SRS some regions would be oversampled, while others would be empty.
+
+Instead of randomly selecting individual cells, GRTS achieves spatial balance by shuffling the branches of the spatial tree.
+When the algorithm looks at a parent cell and its 7 children, it randomly shuffles the order in which those children are visited.
+This (re-)ordering can be seen as a mapping from space to a 1D line along which samples can be selected.
+
+# Reverse hierarchical ordering: spreading the sample
+
+If we read the shuffled tree from the top down (e.g., Base Cell &rarr; Resolution 1 &rarr; Resolution 2), consecutive cells in the 1D line would still be physically right next to each other inside the same parent hexagon and a systematic sample along the 1D line would be needed to achieve a well spread sample.
+
+A better approach, is to use reverse hierarchical ordering.
+When building the final sort index for a cell, the algorithm flips the importance of the hierarchy.
+Instead of putting the top-level parent first, it puts the finest resolution child index first.
+Because the hierarchy is reversed, consecutive numbers in the final sorted list come from completely different parent cells.
+This reverse ordering forces the sequential sample to "jump" across the entire study area, filling in the landscape as evenly and sparsely as possible before ever returning to sample near a previously selected location.
+This is a property that makes the algorithm suitable for master sampling applications or to easily select replacement samples.
+
+## Converting an H3 cell index into a GRTS sort index
+
+To calculate the GRTS sort key for any given cell, the algorithm climbs the H3 hierarchy to find the cell's parents at every resolution.
+At each level, it uses a random number generator seeded by a combination of two variables:
+
+-   **The `parent_id`**: By seeding the generator with the parent cell's unique ID, we guarantee that all 7 children of that parent will always be shuffled in the exact same order.
+
+-   **The `global_seed`**: If we only used the parent ID, the sample would be locked into a single configuration. Adding the user-provided global seed to the shuffle allows us to draw an infinite number of statistically independent random samples.
+
+Because this process for a single H3 cell index is a small, deterministic (conditional on the chosen global seed and H3 resolution) mathematical calculation, it can be executed entirely in the CPU cache, streaming H3 cells at high speed.
+This completely bypasses the need for massive RAM allocations or large database files on disk.
+
+If two researchers run `grts_h3()` on overlapping but different study areas using the same seed, the cells in the overlapping region will receive the exact same sort keys in both studies, ensuring perfect reproducibility with a zero-storage footprint.
+
+## Example: from H3 cell to GRTS sort index
+
+To make this concrete, let's walk through exactly how an H3 cell is unpacked into its geometric address, randomized, and repacked into a GRTS sort key.
+We will use the official [H3 bit layout](https://h3geo.org/docs/core-library/h3Indexing/#bit-layout-of-h3index) to decode the index.
+
+### Decoding the H3 hexadecimal string
+
+Imagine we are drawing a sample at **Resolution 3**, and the engine encounters the H3 index `"832830fffffffff"`. 
+
+This string is the canonical hexadecimal representation of a 64-bit integer (`u64`).
+Because H3 drops leading zeros, the full 16-character string is actually `0832830fffffffff`.
+If we convert this hexadecimal into its binary bit layout (`0000 1000 0011 0010 1000 0011 0000 1111 1111 1111 1111 1111 1111 1111 1111 1111`), we can read the exact geographic address of the cell:
+
+* **Bits 63-52 (`0 0001 000 0011`):** Contains a reserved code (`0`), the mode (`0001`), a mode-dependent section (`000`) and the resolution (`0011`). It tells us this is a standard cell (Mode 1) at Resolution 3.
+* **Bits 51-45 (`0010100`):** This 7-bit block equals **20**. The cell sits inside **Base Cell 20**.
+* **Bits 44-42 (`000`):** The 3-bit child digit for Resolution 1 is **0**.
+* **Bits 41-39 (`110`):** The 3-bit child digit for Resolution 2 is **6**.
+* **Bits 38-36 (`000`):** The 3-bit child digit for Resolution 3 is **0**.
+* **Bits 35-0 (`fffffffff`):** The remaining 12 x 3 = 36 bits are unused (Resolutions 4-15), so they are intentionally set to 1s.
+
+So, our cell's true geometric address is: **Base Cell 20 &rarr; Child 0 &rarr; Child 6 &rarr; Child 0**.
+
+### The GRTS shuffle (mathematical permutation)
+
+To achieve spatial balance, we need to randomly shuffle this entire path. The algorithm calculates a deterministic random shuffle at every level of the spatial tree:
+
+* **Resolution 0 (The Global Base Cells):** First, the 122 H3 base cells themselves are globally shuffled. 
+  * Let's say our global permutation remaps Base Cell 20 to **85**.
+* **Resolution 1:** The engine uses the parent cell (Base Cell 20) and the global seed to calculate a shuffle for its 7 children.
+  * *Calculated Shuffle:* `[5, 1, 6, 0, 4, 3, 2]`
+  * Our cell was child `0`. In this new shuffled order, 0 maps to **5**.
+* **Resolution 2:** The engine uses the parent at Resolution 1 to calculate the next shuffle.
+  * Our cell was child `6`. Let's say the new permutation maps 6 to **3**.
+* **Resolution 3:** The engine uses the parent at Resolution 2 to calculate the final shuffle.
+  * Our cell was child `0`. Let's say the new permutation maps 0 to **1**.
+
+Our cell's new, randomized address is: **Base 85 &rarr; Resolution 1: 5 &rarr; Resolution 2: 3 &rarr; Resolution 3: 1**.
+
+### Reverse hierarchical bit packing
+
+If we created a sorting number using the top-down order (Base Cell first), our sample would still be geographically clustered.
+All cells within Base Cell 20 would remain grouped together numerically.
+
+To force the sample to spread evenly across the study area, `sbsampling::grts_h3()` applies **reverse hierarchical ordering** directly at the bit level.
+It packs the newly shuffled digits into a brand new 64-bit integer, but it builds it from the ground up:
+
+* **Bits 0-6:** The newly shuffled Base Cell (`85`) is placed at the very bottom (the least significant bits).
+* **Bits 7-9:** The Resolution 1 digit (`5`) is shifted above the base cell.
+* **Bits 10-12:** The Resolution 2 digit (`3`) is shifted higher.
+* **Bits 13-15:** The Resolution 3 target digit (`1`) is shifted to the highest, most significant bits of the sequence.
+* **Bits 16-63:** The remaining resolutions were unused and are zero padded for the sort key to be valid.
+
+This becomes:
+
+```text
+000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 000 001 011 101 1010101
+\_____________________________________________________________/ \_/ \_/ \_/ \_____/
+                 Unused Zeros (Bits 16-63)                       R3  R2  R1  Base
+                                                                (1) (3) (5)  (85)
+```
+
+These 64-bit integers are typically represented in R as 16-character hexadecimal strings. Converted to hex, our sort key is: `"0000000000002ed5"`.
+
+Lexicographical sorting will perfectly match the numeric order, provided the strings are strictly zero-padded to a fixed length (e.g., keeping all 16 characters in the hexadecimal string `"0000000000002ed5"`).
+
+By pushing the finest resolution digits into the higher bits and burying the base cell at the bottom, we have implemented a reverse hierarchical sort.
+
+# Accounting for cell area differences
+
+While H3 strives for uniformity, the cells are not perfect equal-area hexagons everywhere on the globe; cells introduce slight area distortions depending on their location on the sphere.
+For a given resolution, cell areas can differ by a factor of two - in practice, this will often be much smaller if the region of interest is restricted (say, a country).
+
+For statistical inference, we can either take the varying cell areas into account at the estimation stage or at the sample selection stage.
+For the latter approach, `sbsampling::grts_h3()` has an argument `area_correction`.
+When set to `TRUE`, it adjusts the inclusion probabilities of the cells so that they are sampled with probability proportional to their size (PPS).
+An efficient Order Sampling technique (similar to Sequential Poisson Sampling) is used (Rosén 1997, Ohlsson 1998).
+For each cell, the algorithm divides its spatially balanced GRTS sort key (which acts as a uniform random variable) by its true physical area to calculate an "effective key".
+By selecting the $n$ cells with the smallest effective keys, the algorithm naturally scales the inclusion probabilities.
+This ensures that larger cells are proportionately more likely to be selected, all while strictly maintaining the requested sample size and the spatial balance of the GRTS design.
+
+# References
+
+Rosén B. (1997). On sampling with probability proportional to size. Journal of Statistical Planning and Inference 62 (2): 159-191. https://doi.org/10.1016/S0378-3758(96)00186-3.
+
+Ohlsson, E. (1998). Sequential Poisson Sampling. Journal of Official Statistics, 14(2), 149-162.
+
+Stevens, D. L., & Olsen, A. R. (2004). Spatially Balanced Sampling of Natural Resources. Journal of the American Statistical Association, 99(465), 262–278. https://doi.org/10.1198/016214504000000250
+
+Uber Technologies, Inc. (2018). H3: Uber’s Hexagonal Hierarchical Spatial Index. https://h3geo.org/
