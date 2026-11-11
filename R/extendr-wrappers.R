@@ -12,7 +12,7 @@ h3_coverage <- function(wkb_bytes, res, containment) .Call(wrap__h3_coverage, wk
 #' Generate a GRTS sample (Internal C-ABI function)
 #'
 #' Geometry -> Coverage -> Sample
-#' This function is wrapped by `grts_h3()` in R and should not be
+#' This function is wrapped by `sample_hex()` in R and should not be
 #' called directly by the user.
 #' Generate a GRTS (Generalized Random Tessellation Stratified) sample of H3
 #' cell indices covering a polygon.
@@ -56,11 +56,11 @@ h3_coverage <- function(wkb_bytes, res, containment) .Call(wrap__h3_coverage, wk
 #' * `containment`    – Containment mode used.
 #' * `area_correction`– Whether area-proportional sampling was applied.
 #' @noRd
-grts_sample_from_wkb <- function(wkb_bytes, res, containment, n, global_seed, area_correction) .Call(wrap__grts_sample_from_wkb, wkb_bytes, res, containment, n, global_seed, area_correction)
+sample_hex_from_wkb <- function(wkb_bytes, res, containment, n, global_seed, area_correction) .Call(wrap__sample_hex_from_wkb, wkb_bytes, res, containment, n, global_seed, area_correction)
 
 #' Pre-computed cells -> Sample
 #' @noRd
-grts_sample_from_cells <- function(cells_bytes, n, global_seed, area_correction) .Call(wrap__grts_sample_from_cells, cells_bytes, n, global_seed, area_correction)
+sample_hex_from_cells <- function(cells_bytes, n, global_seed, area_correction) .Call(wrap__sample_hex_from_cells, cells_bytes, n, global_seed, area_correction)
 
 sample_sobol_from_wkb <- function(wkb_bytes, n, seed, master_bbox, algorithm) .Call(wrap__sample_sobol_from_wkb, wkb_bytes, n, seed, master_bbox, algorithm)
 

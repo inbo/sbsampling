@@ -103,7 +103,7 @@ pub fn h3_coverage(wkb_bytes: &[u8], res: i32, containment: &str) -> extendr_api
 /// Generate a GRTS sample (Internal C-ABI function)
 ///
 /// Geometry -> Coverage -> Sample
-/// This function is wrapped by `grts_h3()` in R and should not be
+/// This function is wrapped by `sample_hex()` in R and should not be
 /// called directly by the user.
 /// Generate a GRTS (Generalized Random Tessellation Stratified) sample of H3
 /// cell indices covering a polygon.
@@ -148,7 +148,7 @@ pub fn h3_coverage(wkb_bytes: &[u8], res: i32, containment: &str) -> extendr_api
 /// * `area_correction`– Whether area-proportional sampling was applied.
 /// @noRd
 #[extendr]
-pub fn grts_sample_from_wkb(
+pub fn sample_hex_from_wkb(
     wkb_bytes: &[u8],
     res: i32,
     containment: &str,
@@ -205,7 +205,7 @@ pub fn grts_sample_from_wkb(
 /// Pre-computed cells -> Sample
 /// @noRd
 #[extendr]
-pub fn grts_sample_from_cells(
+pub fn sample_hex_from_cells(
     cells_bytes: &[u8], // Pure raw bytes, no serialization headers
     n: i32,
     global_seed: f64,
@@ -713,8 +713,8 @@ mod tests {
 // ---------------------------------------------------------------------------
 
 extendr_module! {
-    mod grts_h3;
+    mod sample_hex;
     fn h3_coverage;
-    fn grts_sample_from_wkb;
-    fn grts_sample_from_cells;
+    fn sample_hex_from_wkb;
+    fn sample_hex_from_cells;
 }

@@ -1,34 +1,34 @@
-# test-get_coverage_hex.R
-# Tests for get_coverage_hex(): input validation, output format, and behaviour.
+# test-h3_get_coverage.R
+# Tests for h3_get_coverage(): input validation, output format, and behaviour.
 
 # ---------------------------------------------------------------------------
 # 1. Input validation
 # ---------------------------------------------------------------------------
 
-test_that("get_coverage_hex rejects non-raw wkb input", {
+test_that("h3_get_coverage rejects non-raw wkb input", {
   expect_error(
-    get_coverage_hex(wkb = "not a raw vector"),
+    h3_get_coverage(wkb = "not a raw vector"),
     "Input 'wkb' must be a raw byte vector"
   )
   expect_error(
-    get_coverage_hex(wkb = NULL),
+    h3_get_coverage(wkb = NULL),
     "Input 'wkb' must be a raw byte vector"
   )
 })
 
-test_that("get_coverage_hex rejects invalid resolution", {
+test_that("h3_get_coverage rejects invalid resolution", {
   skip_if_not_installed("sf")
   valid_wkb <- create_test_wkb()
-  expect_error(get_coverage_hex(valid_wkb, resolution = -1))
-  expect_error(get_coverage_hex(valid_wkb, resolution = 16))
-  expect_error(get_coverage_hex(valid_wkb, resolution = "5"))
+  expect_error(h3_get_coverage(valid_wkb, resolution = -1))
+  expect_error(h3_get_coverage(valid_wkb, resolution = 16))
+  expect_error(h3_get_coverage(valid_wkb, resolution = "5"))
 })
 
-test_that("get_coverage_hex rejects invalid containment mode", {
+test_that("h3_get_coverage rejects invalid containment mode", {
   skip_if_not_installed("sf")
   valid_wkb <- create_test_wkb()
   expect_error(
-    get_coverage_hex(valid_wkb, containment = "inside"),
+    h3_get_coverage(valid_wkb, containment = "inside"),
     "should be one of"
   )
 })
@@ -37,9 +37,9 @@ test_that("get_coverage_hex rejects invalid containment mode", {
 # 2. Output format
 # ---------------------------------------------------------------------------
 
-test_that("get_coverage_hex returns a raw bincode vector", {
+test_that("h3_get_coverage returns a raw bincode vector", {
   skip_if_not_installed("sf")
-  cells_raw <- get_coverage_hex(create_test_wkb(), resolution = 4)
+  cells_raw <- h3_get_coverage(create_test_wkb(), resolution = 4)
   expect_type(cells_raw, "raw")
 })
 
@@ -47,20 +47,20 @@ test_that("get_coverage_hex returns a raw bincode vector", {
 # 3. Behaviour
 # ---------------------------------------------------------------------------
 
-test_that("get_coverage_hex accepts all valid containment modes", {
+test_that("h3_get_coverage accepts all valid containment modes", {
   skip_if_not_installed("sf")
   valid_wkb <- create_test_wkb()
-  expect_no_error(get_coverage_hex(valid_wkb, containment = "centroid"))
-  expect_no_error(get_coverage_hex(valid_wkb, containment = "intersect"))
-  expect_no_error(get_coverage_hex(valid_wkb, containment = "boundary"))
-  expect_no_error(get_coverage_hex(valid_wkb, containment = "covers"))
+  expect_no_error(h3_get_coverage(valid_wkb, containment = "centroid"))
+  expect_no_error(h3_get_coverage(valid_wkb, containment = "intersect"))
+  expect_no_error(h3_get_coverage(valid_wkb, containment = "boundary"))
+  expect_no_error(h3_get_coverage(valid_wkb, containment = "covers"))
 })
 
-test_that("get_coverage_hex produces more bytes at higher resolution", {
+test_that("h3_get_coverage produces more bytes at higher resolution", {
   skip_if_not_installed("sf")
   valid_wkb <- create_test_wkb()
-  res3 <- get_coverage_hex(valid_wkb, resolution = 3)
-  res4 <- get_coverage_hex(valid_wkb, resolution = 4)
+  res3 <- h3_get_coverage(valid_wkb, resolution = 3)
+  res4 <- h3_get_coverage(valid_wkb, resolution = 4)
   # Each H3 cell encodes to 8 bytes; more cells → larger payload
   expect_true(length(res4) > length(res3))
 })
@@ -69,9 +69,9 @@ test_that("get_coverage_hex produces more bytes at higher resolution", {
 # 4. Snapshot stability
 # ---------------------------------------------------------------------------
 
-test_that("get_coverage_hex produces stable byte payloads across builds", {
+test_that("h3_get_coverage produces stable byte payloads across builds", {
   skip_if_not_installed("sf")
-  cells_raw <- get_coverage_hex(
+  cells_raw <- h3_get_coverage(
     create_test_wkb(), resolution = 4, containment = "centroid"
   )
   expect_snapshot_value(cells_raw, style = "serialize")

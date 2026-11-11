@@ -1,12 +1,12 @@
-# test-grts_h3-area-correction.R
+# test-sample_hex-area-correction.R
 # Tests specific to the area_correction = TRUE path
 # (sequential poisson sampling).
 # Tests that are shared between modes (ip formula, reproducibility) live in
-# test-grts_h3-ip.R and test-grts_h3-reproducibility.R respectively.
+# test-sample_hex-ip.R and test-sample_hex-reproducibility.R respectively.
 
 test_that("area_correction = TRUE executes and returns a data.frame", {
   skip_if_not_installed("sf")
-  out <- grts_h3(
+  out <- sample_hex(
     wkb = create_test_wkb(), n = 10, resolution = 5, area_correction = TRUE,
     seed = 42
   )
@@ -21,10 +21,10 @@ test_that(
     skip_if_not_installed("sf")
     wkb  <- create_test_wkb()
     seed <- 42
-    r_no  <- grts_h3(
+    r_no  <- sample_hex(
       wkb, n = 100, resolution = 6, area_correction = FALSE, seed = seed
     )
-    r_yes <- grts_h3(
+    r_yes <- sample_hex(
       wkb, n = 100, resolution = 6, area_correction = TRUE,  seed = seed
     )
     expect_false(identical(r_no$cell, r_yes$cell))
@@ -37,10 +37,10 @@ test_that("area_correction = TRUE: sort keys for shared cells are identical to F
   # the acceptance step — so shared cells must carry the same sort_key.
   wkb  <- create_test_wkb()
   seed <- 42
-  r_no  <- grts_h3(
+  r_no  <- sample_hex(
     wkb, n = 5, resolution = 4, area_correction = FALSE, seed = seed
   )
-  r_yes <- grts_h3(
+  r_yes <- sample_hex(
     wkb, n = 5, resolution = 4, area_correction = TRUE,  seed = seed
   )
   shared <- intersect(r_no$cell, r_yes$cell)

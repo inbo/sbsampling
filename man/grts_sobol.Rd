@@ -100,7 +100,7 @@ nc <- st_read(system.file("shape/nc.shp", package = "sf"), quiet = TRUE)
 study_area <- nc[1, ] |> st_geometry() |> st_as_binary(EWKB = FALSE)
 
 # Draw a spatially balanced sample of 50 points
-sample_df <- sample_sobol(
+sample_df <- sobol_sample(
   wkb  = study_area[[1]],
   n    = 50,
   seed = 2021,
@@ -108,7 +108,7 @@ sample_df <- sample_sobol(
 )
 
 # Prefix stability: extend to 100 points — first 50 rows are identical
-sample_df_100 <- sample_sobol(
+sample_df_100 <- sobol_sample(
   wkb  = study_area[[1]],
   n    = 100,
   seed = 2021,

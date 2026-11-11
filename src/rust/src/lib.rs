@@ -1,8 +1,8 @@
 #![recursion_limit = "256"]
 use extendr_api::prelude::*;
 
-mod grts_h3;
 mod rng;
+mod sample_hex;
 mod sobol;
 
 // ---------------------------------------------------------------------------
@@ -11,6 +11,6 @@ mod sobol;
 
 extendr_module! {
     mod sbsampling;
-    use grts_h3;
+    use sample_hex;
     use sobol;
 }

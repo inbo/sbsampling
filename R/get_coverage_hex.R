@@ -12,7 +12,7 @@
 #'
 #' @return A raw vector of H3 cell identifiers.
 #' @export
-h3_get_coverage <- function(
+get_coverage_hex <- function(
   wkb,
   resolution = 5,
   containment = c("centroid", "intersect", "boundary", "covers")

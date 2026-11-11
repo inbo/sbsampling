@@ -87,7 +87,7 @@ remotes::install_git("https://github.com/inbo/sbsampling")
 ## Sampling algorithms
 
 `sample_sobol()` is the main function for sampling from a continuous
-spatial domain. `grts_h3()` is for sampling from a discretised spatial
+spatial domain. `sample_hex()` is for sampling from a discretised spatial
 domain.
 
 | Function | Domain | Rejection | Prefix stable | Master sample across polygons | Output |
@@ -95,7 +95,7 @@ domain.
 | `sample_sobol(algorithm = "acceptance")` | Compact polygons | Yes, `rank` has gaps | Yes | Yes, with a shared `master_bbox` and `seed` | Sobol points |
 | `sample_sobol(algorithm = "warp")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points, warped into the polygon |
 | `sample_sobol(algorithm = "routing")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points ordered along the polygon’s area |
-| `grts_h3()` | Polygons, discretised to H3 cells at a chosen resolution | No | Yes | Yes, for a given `seed` and `resolution` | H3 cells with inclusion probabilities |
+| `sample_hex()` | Polygons, discretised to H3 cells at a chosen resolution | No | Yes | Yes, for a given `seed` and `resolution` | H3 cells with inclusion probabilities |
 
 In short:
 
@@ -111,7 +111,7 @@ In short:
   balanced along that 1-D ordering. It displaces points much more than
   `"warp"` does, so we recommend it only if you specifically want this
   GRTS-style ordering.
-- Use `grts_h3()` if you need a discrete sampling frame (cells),
+- Use `sample_hex()` if you need a discrete sampling frame (cells),
   design-based estimation with explicit inclusion probabilities, or a
   master sample that is consistent across study areas on the H3 grid.
   The sort key of a cell only depends on the cell and the seed, so a
@@ -120,7 +120,7 @@ In short:
 `"warp"` and `"routing"` depend on the exact area of the polygon that is
 being sampled. Their samples are therefore **not** consistent across
 overlapping but differently shaped polygons. For a master sample, use
-`"acceptance"` or `grts_h3()`.
+`"acceptance"` or `sample_hex()`.
 
 ### Limitations
 
@@ -327,7 +327,7 @@ plot(sample_asal_within_asal_bbox$geometry, pch = 21, add = TRUE, cex = 0.7,
 
 ### Sample from the H3 discrete global grid system
 
-We draw a spatially balanced sample with the aid of `grts_h3()` at
+We draw a spatially balanced sample with the aid of `sample_hex()` at
 resolution 7 of the [H3
 resolutions](https://h3geo.org/docs/core-library/restable/) system. This
 corresponds to hexagonal areas of approximately 5.16 km². The `h3o`
@@ -355,7 +355,7 @@ sampled cells, the Hájek estimator of the mean is
 `sum(y * area_m2 / ip) / sum(area_m2 / ip)`.
 
 ``` r
-h3_sample <- grts_h3(
+h3_sample <- sample_hex(
   wkb = ashe_wkb,
   n = 20,
   resolution = 7,
@@ -400,7 +400,7 @@ Drawing a smaller sample with the same seed yields the first rows of the
 larger sample:
 
 ``` r
-h3_sample_10 <- grts_h3(
+h3_sample_10 <- sample_hex(
   wkb = ashe_wkb,
   n = 10,
   resolution = 7,
@@ -413,13 +413,13 @@ all.equal(h3_sample_10$cell, h3_sample$cell[1:10])
 
 If you draw many samples from the same study area (e.g. in simulations),
 the tessellation can be computed once with `get_coverage_hex()` and
-passed to `grts_h3()` via the `cells` argument:
+passed to `sample_hex()` via the `cells` argument:
 
 ``` r
 ashe_coverage <- get_coverage_hex(
   wkb = ashe_wkb, resolution = 7, containment = "centroid"
 )
-h3_sample_cells <- grts_h3(cells = ashe_coverage, n = 20, seed = 123)
+h3_sample_cells <- sample_hex(cells = ashe_coverage, n = 20, seed = 123)
 all.equal(h3_sample$cell, h3_sample_cells$cell)
 #> [1] TRUE
 ```

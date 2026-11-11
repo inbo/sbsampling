@@ -7,7 +7,7 @@
 #' so that equal fractions of the sequence correspond to equal surface areas on
 #' the sphere.
 #'
-#' Unlike [grts_h3()], this function requires no H3 discretisation step and
+#' Unlike [sample_hex()], this function requires no H3 discretisation step and
 #' therefore scales to very large study areas without memory pressure.
 #' H3 cell indices can be obtained afterwards using [h3o::h3_from_xy()] if
 #' needed.
@@ -78,7 +78,7 @@
 #'                     (< 0.05) indicate a sparse geometry relative to its
 #'                     bounding box and imply higher computational cost.
 #' @export
-sobol_sample <- function(
+sample_sobol <- function(
   wkb,
   n,
   seed,
@@ -96,7 +96,7 @@ sobol_sample <- function(
       is_valid_bbox(master_bbox)
   )
 
-  res_df <- sobol_sample_from_wkb(
+  res_df <- sample_sobol_from_wkb(
     wkb_bytes = wkb,
     n = as.integer(n),
     seed = as.numeric(seed),
@@ -142,7 +142,7 @@ sobol_sample <- function(
 #' so that equal fractions of the sequence correspond to equal surface areas on
 #' the sphere.
 #'
-#' Unlike [grts_h3()], this function requires no H3 discretisation step and
+#' Unlike [sample_hex()], this function requires no H3 discretisation step and
 #' therefore scales to very large study areas without memory pressure.
 #' H3 cell indices can be obtained afterwards using [h3o::h3_from_xy()] if
 #' needed.
@@ -243,7 +243,7 @@ sobol_sample <- function(
 #' plot(st_geometry(sample_sf), add = TRUE, pch = 20, col = "steelblue")
 #' }
 bas_sobol <- function(wkb, n, seed, master_bbox = NULL) {
-  df <- sobol_sample(
+  df <- sample_sobol(
     wkb = wkb,
     n = n,
     seed = seed,
@@ -376,7 +376,7 @@ bas_sobol <- function(wkb, n, seed, master_bbox = NULL) {
 #' }
 #' @export
 grts_sobol <- function(wkb, n, seed, master_bbox = NULL) {
-  df <- sobol_sample(
+  df <- sample_sobol(
     wkb = wkb,
     n = n,
     seed = seed,

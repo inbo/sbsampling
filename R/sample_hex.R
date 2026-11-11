@@ -12,7 +12,7 @@
 #' @param wkb Raw byte vector representing Well-Known Binary (WKB) geometry in
 #' WGS84 (EPSG:4326).
 #' @param cells Raw byte vector of pre-computed H3 cell indices, all at the
-#'  same resolution. Use `get_coverage_hex()` to generate them. Invalid indices
+#'  same resolution. Use `h3_get_coverage()` to generate them. Invalid indices
 #'  or mixed resolutions are an error; duplicates are removed with a warning.
 #'  If provided, `wkb`, `resolution`, and `containment` are ignored.
 #' @param n Integer. The target number of sample locations to draw.
@@ -79,7 +79,7 @@
 #' study_area <- nc[1, ] |> st_geometry() |> st_as_binary(EWKB = FALSE)
 #'
 #' # Draw a sample of 25 points at resolution 7
-#' sample_df <- grts_h3(
+#' sample_df <- sample_hex(
 #'   wkb = study_area[[1]],
 #'   n = 25,
 #'   resolution = 7,
@@ -95,7 +95,7 @@
 #' plot(st_geometry(nc[1,]), main = "H3-GRTS Sample (Ashe County)")
 #' plot(st_geometry(sample_df), add = TRUE, pch = 20, col = "red")
 #' }
-grts_h3 <- function(
+sample_hex <- function(
   wkb,
   cells,
   n,
@@ -119,7 +119,7 @@ grts_h3 <- function(
   if (!missing(cells)) {
     stopifnot("Input 'cells' must be a raw byte vector." = is.raw(cells))
 
-    res_df <- grts_sample_from_cells(
+    res_df <- sample_hex_from_cells(
       cells_bytes = cells,
       n = as.integer(n),
       global_seed = as.numeric(seed),
@@ -144,7 +144,7 @@ grts_h3 <- function(
       is_valid_resolution(resolution)
   )
 
-  res_df <- grts_sample_from_wkb(
+  res_df <- sample_hex_from_wkb(
     wkb_bytes = wkb,
     res = as.integer(resolution),
     containment = containment,

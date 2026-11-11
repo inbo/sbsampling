@@ -9,7 +9,7 @@
 test_that("output is strictly portable across OS architectures", {
   skip_if_not_installed("sf")
   test_wkb <- create_test_wkb()
-  grts_h3_out <- grts_h3(
+  sample_hex_out <- sample_hex(
     wkb         = test_wkb,
     n           = 5,
     resolution  = 4,
@@ -18,7 +18,7 @@ test_that("output is strictly portable across OS architectures", {
   )
   # style = "serialize" captures exact binary equivalence including column
   # types, float bit patterns, and attribute values.
-  expect_snapshot_value(grts_h3_out, style = "serialize")
+  expect_snapshot_value(sample_hex_out, style = "serialize")
 
   grts_sobol_out <- grts_sobol(
     wkb         = test_wkb,
@@ -42,12 +42,12 @@ test_that("output is strictly portable across OS architectures", {
 test_that("same seed produces identical results across calls", {
   skip_if_not_installed("sf")
   wkb <- create_test_wkb()
-  r1 <- grts_h3(wkb, n = 5, resolution = 4, seed = 42)
-  r2 <- grts_h3(wkb, n = 5, resolution = 4, seed = 42)
+  r1 <- sample_hex(wkb, n = 5, resolution = 4, seed = 42)
+  r2 <- sample_hex(wkb, n = 5, resolution = 4, seed = 42)
   expect_equal(r1, r2)
 
-  r1 <- grts_h3(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
-  r2 <- grts_h3(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
+  r1 <- sample_hex(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
+  r2 <- sample_hex(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
   expect_equal(r1, r2)
 
   r1 <- grts_sobol(wkb, n = 5, seed = 42)
@@ -62,12 +62,12 @@ test_that("same seed produces identical results across calls", {
 test_that("different seeds produce different selections", {
   skip_if_not_installed("sf")
   wkb <- create_test_wkb()
-  r1 <- grts_h3(wkb, n = 5, resolution = 4, seed = 1)
-  r2 <- grts_h3(wkb, n = 5, resolution = 4, seed = 2)
+  r1 <- sample_hex(wkb, n = 5, resolution = 4, seed = 1)
+  r2 <- sample_hex(wkb, n = 5, resolution = 4, seed = 2)
   expect_false(identical(r1$cell, r2$cell))
 
-  r1 <- grts_h3(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 7)
-  r2 <- grts_h3(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 8)
+  r1 <- sample_hex(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 7)
+  r2 <- sample_hex(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 8)
   expect_false(identical(r1$cell, r2$cell))
 
   r1 <- grts_sobol(wkb, n = 5, seed = 1)
@@ -213,8 +213,8 @@ test_that("master_bbox covering polygon bbox does not warn", {
 test_that("sort keys are pinned for the whole coverage", {
   skip_if_not_installed("sf")
   wkb <- create_test_wkb()
-  n_all <- attr(grts_h3(wkb, n = 1, resolution = 4, seed = 1), "n_cells")
-  r <- grts_h3(wkb, n = n_all, resolution = 4, seed = 215215)
+  n_all <- attr(sample_hex(wkb, n = 1, resolution = 4, seed = 1), "n_cells")
+  r <- sample_hex(wkb, n = n_all, resolution = 4, seed = 215215)
   # Any change to the key pipeline changes this snapshot, i.e. every sample.
   expect_snapshot_value(setNames(r$sort_key, r$cell), style = "deparse")
 })
@@ -246,7 +246,7 @@ test_that("res-15 sort keys are pinned across base cells and a pentagon", {
     "8f1fa4418c6905a" = "000a61af12d8a834", # Brussels
     "8fbe0e35cb15192" = "000d25a93602b308"  # Sydney
   )
-  r <- grts_h3(
+  r <- sample_hex(
     cells = h3_hex_to_raw(names(expected)),
     n = length(expected),
     seed = 42
@@ -259,14 +259,14 @@ test_that("sort keys do not depend on the other cells or on input order", {
   cov <- get_coverage_hex(create_test_wkb(), resolution = 5)
   m <- matrix(cov, nrow = 8)             # one H3 index (8 raw bytes) per column
   n_all <- ncol(m)
-  full <- grts_h3(cells = cov, n = n_all, seed = 42)
+  full <- sample_hex(cells = cov, n = n_all, seed = 42)
 
   # same cells, reversed input order
   rev_cov <- as.vector(m[, rev(seq_len(n_all))])
-  expect_equal(grts_h3(cells = rev_cov, n = n_all, seed = 42), full)
+  expect_equal(sample_hex(cells = rev_cov, n = n_all, seed = 42), full)
 
   # a subset of the cells: shared cells must carry identical keys
   idx <- seq(1, n_all, by = 3)
-  sub <- grts_h3(cells = as.vector(m[, idx]), n = length(idx), seed = 42)
+  sub <- sample_hex(cells = as.vector(m[, idx]), n = length(idx), seed = 42)
   expect_equal(sub$sort_key, full$sort_key[match(sub$cell, full$cell)])
 })
