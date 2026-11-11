@@ -170,3 +170,4 @@ is_valid_seed <- function(seed) {
 is_valid_n <- function(n) {
   !missing(n) && is.numeric(n) && n %% 1 == 0 && n > 0
 }
+

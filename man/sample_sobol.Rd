@@ -40,13 +40,19 @@ Zero rejection, prefix stable.
 \item \code{"routing"}: Maps a 1D Morton-interleaved sequence down an
 exact-area quadtree (zero rejection, prefix stable). Ideal for sparse
 and narrow domains.
+The algorithm generates a 1D spatial sequence (via interleaved 2D
+Owen-scrambled Sobol sequences) that routes directly through the
+geometry's exact area.
+It traverses a lazy top-down quadtree in equal-area \verb{(lon, sin(lat))}
+space, dynamically clipping the polygon to compute exact intersection
+areas at every branch.
 }}
 }
 \value{
 A \code{data.frame} with \code{n} rows and three columns:
 \itemize{
-\item \code{lon}         – Longitude of the sample point (WGS84 decimal degrees).
-\item \code{lat}         – Latitude  of the sample point (WGS84 decimal degrees).
+\item \code{lon}         – Longitude of the sample point (decimal degrees).
+\item \code{lat}         – Latitude  of the sample point (decimal degrees).
 \item \code{rank}        – Index into the raw Sobol stream at which this point was
 accepted. Useful for diagnostics and for verifying prefix
 stability across calls.
@@ -63,10 +69,10 @@ geometry bounding box in decimal degrees.
 Either from master bounding box or polygon bounding box.
 \item \code{sobol_scanned} – Total number of Sobol stream indices evaluated
 (accepted + rejected). Equals the last \code{sobol_index} + 1.
-\item \code{fill_ratio}    – \code{n / sobol_scanned}. The fraction of bounding-box
+\item \code{acceptance_rate} – \code{n / sobol_scanned}. The fraction of bounding-box
 candidates that fell inside the polygon. Low values
 (< 0.05) indicate a sparse geometry relative to its
-bounding box and imply higher computational cost.
+bounding box.
 }
 }
 \description{
@@ -102,3 +108,50 @@ not for \code{"routing"} or \code{"warp"}, which depends on the exact area of ea
 polygon.
 }
 
+\section{Area-equal sampling}{
+
+Longitude is mapped linearly from the Sobol stream.
+Authalic latitude is mapped through the inverse CDF of \code{sin(lat)} restricted
+to the bounding box latitude band, so that the expected number of candidate
+points per unit surface area is uniform across the globe regardless of
+latitude.
+}
+
+\section{Coordinate system}{
+
+Input and output are in longitude, latitude decimal degrees without assuming
+a specific datum.
+Projection to planar coordinates is not required.
+However, polygons straddling the antimeridian (180°/-180°) must be
+pre-split into a \code{MULTIPOLYGON} (e.g., using \code{sf::st_wrap_dateline()}) before
+conversion to WKB.
+}
+
+\section{Prefix stability}{
+
+Calling with the same \code{seed} and a larger sample size \code{n2 > n1} on the
+\strong{same polygon} produces a sample whose first \code{n1} rows are identical to the
+\code{n1} row result.
+}
+
+\references{
+Burley, B. (2020). Practical Hash-based Owen Scrambling.
+\emph{Journal of Computer Graphics Techniques (JCGT)}, 9(4), 1-20.
+\url{https://jcgt.org/published/0009/04/01/}
+
+Joe, S., & Kuo, F. Y. (2008). Constructing Sobol sequences with better
+two-dimensional projections.
+\emph{SIAM Journal on Scientific Computing}, 30(5), 2635-2654.
+\doi{10.1137/070709359}
+
+Pharr, M., Jakob, W., & Humphreys, G. (2023).
+\emph{Physically Based Rendering: From Theory to Implementation} (4th ed.).
+MIT Press.
+
+Robertson, B. L., et al. (2013). Spatial-balanced sampling in continuous
+space. \emph{Environmental and Ecological Statistics}, 20(1), 149-167.
+
+Vegdahl, N. (2021). Building a Better LK Hash.
+\emph{Psychopath Renderer Blog}.
+\url{https://psychopath.io/post/2021_01_30_building_a_better_lk_hash}
+}

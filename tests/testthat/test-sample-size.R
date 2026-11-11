@@ -7,10 +7,10 @@ test_that("result has exactly n rows", {
   result <- sample_hex(wkb, n = 5, resolution = 4, seed = 42)
   expect_equal(nrow(result), 5L)
 
-  result <- grts_sobol(wkb, n = 5, seed = 42)
+  result <- sample_sobol(wkb, n = 5, seed = 42, algorithm = "routing")
   expect_equal(nrow(result), 5L)
 
-  result <- bas_sobol(wkb, n = 5, seed = 42)
+  result <- sample_sobol(wkb, n = 5, seed = 42)
   expect_equal(nrow(result), 5L)
 
 })
@@ -21,10 +21,10 @@ test_that("n = 1 returns exactly one row with all required columns", {
   result <- sample_hex(wkb, n = 1, resolution = 4, seed = 42)
   expect_equal(nrow(result), 1L)
 
-  result <- grts_sobol(wkb, n = 1, seed = 42)
+  result <- sample_sobol(wkb, n = 1, seed = 42, algorithm = "routing")
   expect_equal(nrow(result), 1L)
 
-  result <- bas_sobol(wkb, n = 1, seed = 42)
+  result <- sample_sobol(wkb, n = 1, seed = 42)
   expect_equal(nrow(result), 1L)
 })
 
@@ -65,11 +65,11 @@ test_that("n = -5 returns a clear error", {
     "`n` must be "
   )
   expect_error(
-    grts_sobol(create_test_wkb(), n = -5, seed = 42),
+    sample_sobol(create_test_wkb(), n = -5, seed = 42, algorithm = "routing"),
     "`n` must be "
   )
   expect_error(
-    bas_sobol(create_test_wkb(), n = -5, seed = 42),
+    sample_sobol(create_test_wkb(), n = -5, seed = 42),
     "`n` must be "
   )
 })

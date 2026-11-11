@@ -20,19 +20,20 @@ test_that("output is strictly portable across OS architectures", {
   # types, float bit patterns, and attribute values.
   expect_snapshot_value(sample_hex_out, style = "serialize")
 
-  grts_sobol_out <- grts_sobol(
+  sample_sobol_out <- sample_sobol(
     wkb         = test_wkb,
     n           = 5,
-    seed        = 42
+    seed        = 42,
+    algorithm = "routing"
   )
-  expect_snapshot_value(grts_sobol_out, style = "serialize")
+  expect_snapshot_value(sample_sobol_out, style = "serialize")
 
-  bas_sobol_out <- bas_sobol(
+  sample_sobol_out <- sample_sobol(
     wkb         = test_wkb,
     n           = 5,
     seed        = 42
   )
-  expect_snapshot_value(bas_sobol_out, style = "serialize")
+  expect_snapshot_value(sample_sobol_out, style = "serialize")
 })
 
 # ---------------------------------------------------------------------------
@@ -50,12 +51,12 @@ test_that("same seed produces identical results across calls", {
   r2 <- sample_hex(wkb, n = 100, resolution = 6, area_correction = TRUE, seed = 7)
   expect_equal(r1, r2)
 
-  r1 <- grts_sobol(wkb, n = 5, seed = 42)
-  r2 <- grts_sobol(wkb, n = 5, seed = 42)
+  r1 <- sample_sobol(wkb, n = 5, seed = 42, algorithm = "routing")
+  r2 <- sample_sobol(wkb, n = 5, seed = 42, algorithm = "routing")
   expect_equal(r1, r2)
 
-  r1 <- bas_sobol(wkb, n = 5, seed = 42)
-  r2 <- bas_sobol(wkb, n = 5, seed = 42)
+  r1 <- sample_sobol(wkb, n = 5, seed = 42)
+  r2 <- sample_sobol(wkb, n = 5, seed = 42)
   expect_equal(r1, r2)
 })
 
@@ -70,12 +71,12 @@ test_that("different seeds produce different selections", {
   r2 <- sample_hex(wkb, n = 5, resolution = 4, area_correction = TRUE, seed = 8)
   expect_false(identical(r1$cell, r2$cell))
 
-  r1 <- grts_sobol(wkb, n = 5, seed = 1)
-  r2 <- grts_sobol(wkb, n = 5, seed = 2)
+  r1 <- sample_sobol(wkb, n = 5, seed = 1, algorithm = "routing")
+  r2 <- sample_sobol(wkb, n = 5, seed = 2, algorithm = "routing")
   expect_false(identical(r1$lon, r2$lon))
 
-  r1 <- bas_sobol(wkb, n = 5, seed = 1)
-  r2 <- bas_sobol(wkb, n = 5, seed = 2)
+  r1 <- sample_sobol(wkb, n = 5, seed = 1)
+  r2 <- sample_sobol(wkb, n = 5, seed = 2)
   expect_false(identical(r1$lon, r2$lon))
 })
 
@@ -106,8 +107,8 @@ test_that(
     seed <- 42
     target_n <- 50
 
-    res1 <- bas_sobol(wkb1, n = target_n, seed = seed, master_bbox = mbbox)
-    res2 <- bas_sobol(wkb2, n = target_n, seed = seed, master_bbox = mbbox)
+    res1 <- sample_sobol(wkb1, n = target_n, seed = seed, master_bbox = mbbox)
+    res2 <- sample_sobol(wkb2, n = target_n, seed = seed, master_bbox = mbbox)
 
     # 4. Verify the sequence bounds were correctly registered in attributes
     expect_equal(unname(attr(res1, "sequence_bbox")), mbbox)
@@ -116,7 +117,7 @@ test_that(
     # 5. Extract points that were sampled in both runs
     # Because the sequence is master-bbox-relative, points falling in the
     # intersection of wkb1 and wkb2 MUST share the exact same Sobol index.
-    shared_indices <- intersect(res1$sobol_index, res2$sobol_index)
+    shared_indices <- intersect(res1$rank, res2$rank)
 
     # Assert that overlapping points exist (with n=50 and 25% area overlap,
     # we confidently expect multiple shared points).
@@ -124,8 +125,8 @@ test_that(
 
     # 6. Verify identical coordinates for shared indices
     # Subset both result sets to just the shared indices
-    shared_res1 <- res1[res1$sobol_index %in% shared_indices, ]
-    shared_res2 <- res2[res2$sobol_index %in% shared_indices, ]
+    shared_res1 <- res1[res1$rank %in% shared_indices, ]
+    shared_res2 <- res2[res2$rank %in% shared_indices, ]
     attributes(shared_res1) <- NULL
     attributes(shared_res2) <- NULL
 
@@ -133,19 +134,19 @@ test_that(
     expect_equal(shared_res1, shared_res2)
 
     # 7. Verification of independent (non-master) sampling behavior
-    # If we sample WITHOUT master_bbox, the domains shift, and sobol_index
+    # If we sample WITHOUT master_bbox, the domains shift, and rank
     # collisions will yield completely different geographic coordinates.
-    res_independent <- bas_sobol(
+    res_independent <- sample_sobol(
       wkb2, n = target_n, seed = seed, master_bbox = NULL
     )
 
     # Find an index shared between the master-bbox run and independent run
-    control_indices <- intersect(res2$sobol_index, res_independent$sobol_index)
+    control_indices <- intersect(res2$rank, res_independent$rank)
     expect_true(length(control_indices) > 0)
 
     idx <- control_indices[1]
-    indep_point <- res_independent[res_independent$sobol_index == idx, ]
-    master_point <- res2[res2$sobol_index == idx, ]
+    indep_point <- res_independent[res_independent$rank == idx, ]
+    master_point <- res2[res2$rank == idx, ]
 
     # Assert they do NOT map to the same coordinates when domains differ
     expect_false(
