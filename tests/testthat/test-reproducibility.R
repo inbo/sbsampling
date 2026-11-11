@@ -172,15 +172,15 @@ test_that(
     )
     wkb2 <- sf::st_as_binary(sf::st_sfc(poly2, crs = 4326), EWKB = FALSE)[[1]]
 
-    ac1 <- sobol_sample(wkb1, n = 4, seed = 1, algorithm = "acceptance")
-    ro1 <- sobol_sample(wkb1, n = 4, seed = 1, algorithm = "routing")
+    ac1 <- sample_sobol(wkb1, n = 4, seed = 1, algorithm = "acceptance")
+    ro1 <- sample_sobol(wkb1, n = 4, seed = 1, algorithm = "routing")
     expect_equal(
       ac1[, c("lon", "lat", "rank")],
       ro1[, c("lon", "lat", "rank")],
       tolerance = 1e-7
     )
-    ac2 <- sobol_sample(wkb2, n = 4, seed = 1, algorithm = "acceptance")
-    ro2 <- sobol_sample(wkb2, n = 4, seed = 1, algorithm = "routing")
+    ac2 <- sample_sobol(wkb2, n = 4, seed = 1, algorithm = "acceptance")
+    ro2 <- sample_sobol(wkb2, n = 4, seed = 1, algorithm = "routing")
     expect_equal(
       ac2[, c("lon", "lat", "rank")],
       ro2[, c("lon", "lat", "rank")],
@@ -194,7 +194,7 @@ test_that("master_bbox smaller than polygon bbox warns", {
   sq <- sf::st_polygon(list(rbind(c(0, 0), c(2, 0), c(2, 2), c(0, 2), c(0, 0))))
   wkb <- sf::st_as_binary(sq)
   expect_warning(
-    sobol_sample(wkb, n = 10, seed = 1, master_bbox = c(0, 0, 1, 2)),
+    sample_sobol(wkb, n = 10, seed = 1, master_bbox = c(0, 0, 1, 2)),
     "extends beyond"
   )
 })
@@ -203,10 +203,10 @@ test_that("master_bbox covering polygon bbox does not warn", {
   sq <- sf::st_polygon(list(rbind(c(0, 0), c(2, 0), c(2, 2), c(0, 2), c(0, 0))))
   wkb <- sf::st_as_binary(sq)
   expect_no_warning(
-    sobol_sample(wkb, n = 10, seed = 1, master_bbox = c(-1, -1, 3, 3))
+    sample_sobol(wkb, n = 10, seed = 1, master_bbox = c(-1, -1, 3, 3))
   )
   expect_no_warning(
-    sobol_sample(wkb, n = 10, seed = 1, master_bbox = c(0, 0, 2, 2))
+    sample_sobol(wkb, n = 10, seed = 1, master_bbox = c(0, 0, 2, 2))
   )
 })
 

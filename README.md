@@ -86,15 +86,15 @@ remotes::install_git("https://github.com/inbo/sbsampling")
 
 ## Sampling algorithms
 
-`sobol_sample()` is the main function for sampling from a continuous
+`sample_sobol()` is the main function for sampling from a continuous
 spatial domain. `grts_h3()` is for sampling from a discretised spatial
 domain.
 
 | Function | Domain | Rejection | Prefix stable | Master sample across polygons | Output |
 |:---|:---|:---|:---|:---|:---|
-| `sobol_sample(algorithm = "acceptance")` | Compact polygons | Yes, `rank` has gaps | Yes | Yes, with a shared `master_bbox` and `seed` | Sobol points |
-| `sobol_sample(algorithm = "warp")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points, warped into the polygon |
-| `sobol_sample(algorithm = "routing")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points ordered along the polygon’s area |
+| `sample_sobol(algorithm = "acceptance")` | Compact polygons | Yes, `rank` has gaps | Yes | Yes, with a shared `master_bbox` and `seed` | Sobol points |
+| `sample_sobol(algorithm = "warp")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points, warped into the polygon |
+| `sample_sobol(algorithm = "routing")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points ordered along the polygon’s area |
 | `grts_h3()` | Polygons, discretised to H3 cells at a chosen resolution | No | Yes | Yes, for a given `seed` and `resolution` | H3 cells with inclusion probabilities |
 
 In short:
@@ -139,7 +139,7 @@ a spatially balanced sample, we extract Ashe county from the North
 Carolina state dataset that ships with the `sf` package.
 
 We need to convert the geometries to well-known binary format to be able
-to use them as input for `sbsampling::sobol_sample()`. We also extract
+to use them as input for `sbsampling::sample_sobol()`. We also extract
 and convert the bounding box geometry to illustrate the different ways
 in which the algorithms handle the Owen-scrambled Sobol sequences that
 are generated in the bounding box.
@@ -168,14 +168,14 @@ Drawing a sample using one of the Sobol sequence-based sampling
 algorithms, then proceeds as follows:
 
 ``` r
-bas_sample <- sobol_sample(
+bas_sample <- sample_sobol(
   wkb = ashe_wkb, n = 20, seed = 456, algorithm = "acceptance"
 )
 bas_sample_sf <- sf::st_as_sf(bas_sample, coords = c("lon", "lat"), crs = 4267)
-routed_sample <- sobol_sample(
+routed_sample <- sample_sobol(
   wkb = ashe_wkb, n = 20, seed = 456, algorithm = "routing"
 )
-warped_sample <- sobol_sample(
+warped_sample <- sample_sobol(
   wkb = ashe_wkb, n = 20, seed = 456, algorithm = "warp"
 )
 routed_sample_sf <- sf::st_as_sf(
@@ -184,7 +184,7 @@ routed_sample_sf <- sf::st_as_sf(
 warped_sample_sf <- sf::st_as_sf(
   warped_sample, coords = c("lon", "lat"), crs = 4267
 )
-bbox_sample <- sobol_sample(
+bbox_sample <- sample_sobol(
   wkb = ashe_bbox_wkb,
   n = max(bas_sample$rank) + 1,
   seed = 456,
@@ -223,19 +223,19 @@ All Sobol-sequence algorithm variants result in the same sample in case
 we use the bounding box geometry as input:
 
 ``` r
-bbox_sample_acceptance <- sobol_sample(
+bbox_sample_acceptance <- sample_sobol(
   wkb = ashe_bbox_wkb,
   n = 20,
   seed = 456,
   algorithm = "acceptance"
 )
-bbox_sample_warp <- sobol_sample(
+bbox_sample_warp <- sample_sobol(
   wkb = ashe_bbox_wkb,
   n = 20,
   seed = 456,
   algorithm = "warp"
 )
-bbox_sample_routing <- sobol_sample(
+bbox_sample_routing <- sample_sobol(
   wkb = ashe_bbox_wkb,
   n = 20,
   seed = 456,
@@ -263,7 +263,7 @@ extend a sample later (e.g. to replace unreachable sites) without
 changing the points that were already selected.
 
 ``` r
-warped_10 <- sobol_sample(
+warped_10 <- sample_sobol(
   wkb = ashe_wkb, n = 10, seed = 456, algorithm = "warp"
 )
 all.equal(
@@ -299,7 +299,7 @@ asal_union_wkb <- asal |>
   sf::st_as_binary()
 asal_union_wkb <- asal_union_wkb[[1]]
 
-sample_ashe_within_asal_bbox <- sobol_sample(
+sample_ashe_within_asal_bbox <- sample_sobol(
   wkb = ashe_wkb,
   n = 20,
   seed = 456,
@@ -308,7 +308,7 @@ sample_ashe_within_asal_bbox <- sobol_sample(
 ) |>
   sf::st_as_sf(coords = c("lon", "lat"), crs = 4267)
 
-sample_asal_within_asal_bbox <- sobol_sample(
+sample_asal_within_asal_bbox <- sample_sobol(
   wkb = asal_union_wkb,
   n = 20,
   seed = 456,

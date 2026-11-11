@@ -62,6 +62,6 @@ grts_sample_from_wkb <- function(wkb_bytes, res, containment, n, global_seed, ar
 #' @noRd
 grts_sample_from_cells <- function(cells_bytes, n, global_seed, area_correction) .Call(wrap__grts_sample_from_cells, cells_bytes, n, global_seed, area_correction)
 
-sobol_sample_from_wkb <- function(wkb_bytes, n, seed, master_bbox, algorithm) .Call(wrap__sobol_sample_from_wkb, wkb_bytes, n, seed, master_bbox, algorithm)
+sample_sobol_from_wkb <- function(wkb_bytes, n, seed, master_bbox, algorithm) .Call(wrap__sample_sobol_from_wkb, wkb_bytes, n, seed, master_bbox, algorithm)
 
 # nolint end

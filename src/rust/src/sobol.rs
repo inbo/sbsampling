@@ -815,7 +815,7 @@ fn route_warp(
 // ---------------------------------------------------------------------------
 
 #[extendr]
-pub fn sobol_sample_from_wkb(
+pub fn sample_sobol_from_wkb(
     wkb_bytes: &[u8],
     n: i32,
     seed: f64,
@@ -1084,7 +1084,7 @@ mod tests {
     use geo::{MultiPolygon, Polygon};
 
     #[inline]
-    fn sobol_sample(index: u32, dimension: usize, seed: u32) -> f64 {
+    fn sample_sobol(index: u32, dimension: usize, seed: u32) -> f64 {
         let raw = sobol_raw(index, dimension);
         let scrambled = owen_scramble(raw, seed);
         scrambled as f64 * (1.0 / 4_294_967_296.0_f64)
@@ -1123,10 +1123,10 @@ mod tests {
     // ── Scramble properties ──────────────────────────────────────────────────
 
     #[test]
-    fn sobol_sample_in_unit_interval() {
+    fn sample_sobol_in_unit_interval() {
         for dim in 0..5usize {
             for idx in 0..1024u32 {
-                let v = sobol_sample(idx, dim, 0xdeadbeef);
+                let v = sample_sobol(idx, dim, 0xdeadbeef);
                 assert!(
                     (0.0..1.0).contains(&v),
                     "dim {} index {}: {} out of [0,1)",
@@ -1139,12 +1139,12 @@ mod tests {
     }
 
     #[test]
-    fn sobol_sample_deterministic() {
+    fn sample_sobol_deterministic() {
         for dim in 0..5usize {
             for idx in 0..64u32 {
                 assert_eq!(
-                    sobol_sample(idx, dim, 42),
-                    sobol_sample(idx, dim, 42),
+                    sample_sobol(idx, dim, 42),
+                    sample_sobol(idx, dim, 42),
                     "dim {} index {}: not deterministic",
                     dim,
                     idx
@@ -1156,8 +1156,8 @@ mod tests {
     #[test]
     fn different_seeds_produce_different_streams() {
         for dim in 0..5usize {
-            let s0: Vec<f64> = (0..32).map(|i| sobol_sample(i, dim, 0)).collect();
-            let s1: Vec<f64> = (0..32).map(|i| sobol_sample(i, dim, 1)).collect();
+            let s0: Vec<f64> = (0..32).map(|i| sample_sobol(i, dim, 0)).collect();
+            let s1: Vec<f64> = (0..32).map(|i| sample_sobol(i, dim, 1)).collect();
             assert_ne!(s0, s1, "seed 0 and seed 1 gave same stream for dim {}", dim);
         }
     }
@@ -1209,8 +1209,8 @@ mod tests {
     #[test]
     fn prefix_of_stream_is_stable() {
         let seed = 0xabcd_1234u32;
-        let short: Vec<f64> = (0..100).map(|i| sobol_sample(i, 0, seed)).collect();
-        let long: Vec<f64> = (0..200).map(|i| sobol_sample(i, 0, seed)).collect();
+        let short: Vec<f64> = (0..100).map(|i| sample_sobol(i, 0, seed)).collect();
+        let long: Vec<f64> = (0..200).map(|i| sample_sobol(i, 0, seed)).collect();
         assert_eq!(
             &short[..],
             &long[..100],
@@ -1585,5 +1585,5 @@ mod tests {
 
 extendr_module! {
     mod sobol;
-    fn sobol_sample_from_wkb;
+    fn sample_sobol_from_wkb;
 }

@@ -6,7 +6,7 @@ test_that(
     )))
     t <- system.time(
       expect_error(
-        sobol_sample(tri, n = 100, seed = 1,
+        sample_sobol(tri, n = 100, seed = 1,
                      master_bbox = c(8, 8, 10, 10),
                      algorithm = "acceptance sampling"),
         "zero computable area"
@@ -21,7 +21,7 @@ test_that("non-polygon geometries give a clear error", {
   line <- sf::st_as_binary(sf::st_linestring(rbind(c(0, 0), c(1, 1))))
   for (alg in c("acceptance sampling", "routing", "warp")) {
     expect_error(
-      sobol_sample(line, n = 10, seed = 1, algorithm = alg),
+      sample_sobol(line, n = 10, seed = 1, algorithm = alg),
       "Unsupported geometry type: LineString"
     )
   }

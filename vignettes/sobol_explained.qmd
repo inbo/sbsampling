@@ -359,10 +359,10 @@ showcase_grts_both(
 TO DO
 
 
-## Sobol based GRTS-like and BAS-like implementations in `sbsampling::sobol_sample()`
+## Sobol based GRTS-like and BAS-like implementations in `sbsampling::sample_sobol()`
 
 While the original GRTS (Stevens and Olsen 2004) was a groundbreaking advance for environmental monitoring, it was designed around discrete grid approximations and hierarchical quadtree shuffling.
-The `sobol_sample()` engine modernizes this approach using scrambled low-discrepancy Sobol sequences (Joe and Kuo 2008; Burley 2020; Pharr et al. 2023), offering three core advantages.
+The `sample_sobol()` engine modernizes this approach using scrambled low-discrepancy Sobol sequences (Joe and Kuo 2008; Burley 2020; Pharr et al. 2023), offering three core advantages.
 
 ### Multi-dimensional spatial stratification: the $(t, s)$-net property
 
@@ -373,7 +373,7 @@ However, traditional GRTS **does not constrain 1D marginal projections**.
 As seen in the quadrant map above, if you look across individual rows or columns (horizontal or vertical strips), some strips contain two points while adjacent strips contain zero or one.
 If an environmental gradient aligns primarily with latitude or longitude (such as elevation, temperature, or distance from a coastline), this uneven marginal distribution can reduce sample efficiency.
 
-`sobol_sample()` resolves this by generating points using an Owen-scrambled (Owen 2003) base-2 Sobol sequence.
+`sample_sobol()` resolves this by generating points using an Owen-scrambled (Owen 2003) base-2 Sobol sequence.
 In two dimensions ($s = 2$), Sobol sequences form a $(0, 2)$-net in base 2.
 For any sample size $n = 2^m$, **every dyadic elementary rectangle** of the form:
 
@@ -444,7 +444,7 @@ h_4_0 <- make_dyadic_hierarchy(4, 0)
 h_0_4 <- make_dyadic_hierarchy(0, 4)
 
 wkb_unit_square <- create_test_wkb()
-example1 <- sobol_sample(
+example1 <- sample_sobol(
   wkb = wkb_unit_square, n = 16, seed = 213,
   algorithm = "routing"
 ) |>
@@ -511,7 +511,7 @@ This introduces:
 
 2. **Resolution limits**: Sample points are bound to the discretisation step $H$.
 
-`sobol_sample()` operates on the exact continuous geometry using two selectable algorithms: acceptance sampling or exact routing, which we explain further.
+`sample_sobol()` operates on the exact continuous geometry using two selectable algorithms: acceptance sampling or exact routing, which we explain further.
 
 
 ### Native spherical area preservation
@@ -519,7 +519,7 @@ This introduces:
 Sampling geographic coordinates $(\text{lon}, \text{lat})$ directly on a Cartesian grid introduces latitudinal area distortion, as the physical surface area of a degree of longitude shrinks toward the poles by $\cos(\text{lat})$.
 Traditional GRTS workflows require projecting vector boundaries into an equal-area coordinate reference system (such as Albers Equal Area or sinusoidal projections) before sampling.
 
-`sobol_sample()` natively addresses spherical distortion by applying an exact area-preserving coordinate transform:
+`sample_sobol()` natively addresses spherical distortion by applying an exact area-preserving coordinate transform:
 
 $$\text{lon} = \text{lon}_{\min} + u \cdot (\text{lon}_{\max} - \text{lon}_{\min})$$
 $$\sin(\text{lat}) = \sin(\text{lat}_{\min}) + v \cdot (\sin(\text{lat}_{\max}) - \sin(\text{lat}_{\min}))$$
