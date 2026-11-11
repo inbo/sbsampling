@@ -1,0 +1,427 @@
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+<!-- badges: start -->
+
+[![Project Status: Concept - Minimal or no implementation has been done
+yet, or the repository is only intended to be a limited example, demo,
+or
+proof-of-concept.](https://www.repostatus.org/badges/latest/concept.svg)](https://www.repostatus.org/#concept)
+[![MIT + file
+LICENSE](https://img.shields.io/badge/License-MIT_+_file_LICENSE-brightgreen)](LICENSE.md)
+[![Release](https://img.shields.io/github/release/inbo/sbsampling.svg)](https://github.com/inbo/sbsampling/releases)
+![GitHub Workflow
+Status](https://github.com/inbo/sbsampling/actions/workflows/check_on_main.yml/badge.svg)
+![GitHub repo
+size](https://img.shields.io/github/repo-size/inbo/sbsampling) ![GitHub
+code size in
+bytes](https://img.shields.io/github/languages/code-size/inbo/sbsampling.svg)
+![r-universe
+name](https://inbo.r-universe.dev/badges/:name?color=c04384)
+![r-universe package](https://inbo.r-universe.dev/badges/sbsampling)
+[![Codecov test
+coverage](https://codecov.io/gh/inbo/sbsampling/branch/main/graph/badge.svg)](https://app.codecov.io/gh/inbo/sbsampling?branch=main)
+[![extendr](https://img.shields.io/badge/extendr-%5E0.8.1-276DC2)](https://extendr.rs/extendr/extendr_api/)
+<!-- badges: end -->
+
+# sbsampling: Sequence-Based Spatially Balanced Sampling on the Sphere <a href="https://inbo.github.io/sbsampling"><img src="man/figures/logo.png" align="right" height="139" alt="sbsampling website" /></a>
+
+[Van Calster, Hans](mailto:hans.vancalster%40inbo.be)[^1]
+
+**keywords**: H3; GRTS; spatially balanced sampling; Sobol sequence
+
+<!-- description: start -->
+
+Implements spatially balanced sampling algorithms on the sphere using
+sequence-based randomization. It offers both continuous sampling from
+vector polygon geodata utilizing Owen-scrambled Sobol sequences, and
+discrete spatial sampling via the H3 global grid system. Both approaches
+operate natively on spherical geographic coordinates, eliminating the
+need for map projections while ensuring spatially well-distributed
+survey points. <!-- description: end -->
+
+The `sbsampling` package implements sequence-based spatially balanced
+sampling designs where the input sampling frame is in spherical
+coordinates (typically a vector polygon or multi-polygon). The functions
+either directly sample from the continuous spatial domain or leverage
+the [H3](https://h3geo.org/) discrete global grid system for indexing
+spatial data into a hexagonal grid.
+
+For sampling from the [H3](https://h3geo.org/) discrete global grid
+system, the package provides spatially balanced sampling via an
+adaptation of the Generalized Random Tessellation Stratified (GRTS)
+algorithm. For a given random seed and H3 resolution, all sampling units
+are deterministically sorted such that consecutively ordered sampling
+units are spatially balanced samples for a given area on earth, which
+makes it suitable for so-called master sampling applications.
+
+For direct sampling from continuous spatial domains without
+discretization, several implementations are provided. One, is a
+modification of the balanced acceptance sampling (BAS) algorithm
+(Robertson) whereby points are drawn from a 2-D Owen-scrambled Sobol
+sequence and accepted when inside the sampling frame. Its domain of
+applicability should be restricted to relatively compact spatial
+domains. It is suitable for so-called master sampling applications. For
+non-compact spatial domains, the package provides alternatives that
+directly route or warp the 2-D Owen-scrambled Sobol sequence inside a
+polygon without rejection sampling.
+
+The implementations are written in [`Rust`](https://rust-lang.org/) and
+wrapped into an R package using
+[`rextendr`](https://extendr.rs/rextendr/). The package is developed
+with the aid of large language models Google Gemini and Anthropic Claude
+Sonnet. R code is kept to a bare minimum and the package has zero R
+dependencies. All algorithms are thoroughly tested, both with unit
+testing and simulations. The implementation is lightweight,
+cross-platform, fast and memory friendly.
+
+## Installation
+
+Install the development version from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("remotes")
+remotes::install_git("https://github.com/inbo/sbsampling")
+```
+
+## Sampling algorithms
+
+`sample_sobol()` is the main function for sampling from a continuous
+spatial domain. `sample_hex()` is for sampling from a discretised spatial
+domain.
+
+| Function | Domain | Rejection | Prefix stable | Master sample across polygons | Output |
+|:---|:---|:---|:---|:---|:---|
+| `sample_sobol(algorithm = "acceptance")` | Compact polygons | Yes, `rank` has gaps | Yes | Yes, with a shared `master_bbox` and `seed` | Sobol points |
+| `sample_sobol(algorithm = "warp")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points, warped into the polygon |
+| `sample_sobol(algorithm = "routing")` | Any, including sparse or narrow polygons | No | Yes | No | Redistributed Sobol points ordered along the polygon’s area |
+| `sample_hex()` | Polygons, discretised to H3 cells at a chosen resolution | No | Yes | Yes, for a given `seed` and `resolution` | H3 cells with inclusion probabilities |
+
+In short:
+
+- If your polygon fills a reasonable share of its bounding box, use
+  `"acceptance"`. It is the only continuous variant that can be used for
+  master sampling: with the same `master_bbox` and `seed`, overlapping
+  polygons share the same points in their overlap.
+- If your polygon is sparse or narrow relative to its bounding box, use
+  `"warp"`. It never rejects points and deforms the 2-D point pattern as
+  little as possible (see the plots below).
+- `"routing"` is the continuous analogue of GRTS: it orders points along
+  the exact area of the polygon, so that consecutive ranks are spatially
+  balanced along that 1-D ordering. It displaces points much more than
+  `"warp"` does, so we recommend it only if you specifically want this
+  GRTS-style ordering.
+- Use `sample_hex()` if you need a discrete sampling frame (cells),
+  design-based estimation with explicit inclusion probabilities, or a
+  master sample that is consistent across study areas on the H3 grid.
+  The sort key of a cell only depends on the cell and the seed, so a
+  cell has the same sort key in every study area.
+
+`"warp"` and `"routing"` depend on the exact area of the polygon that is
+being sampled. Their samples are therefore **not** consistent across
+overlapping but differently shaped polygons. For a master sample, use
+`"acceptance"` or `sample_hex()`.
+
+### Limitations
+
+- Input geometries must be `POLYGON` or `MULTIPOLYGON` in an angular
+  coordinate system such as WGS84 (EPSG:4326) (geodetic CRS), converted
+  to well-known binary (WKB).
+- Polygons crossing the antimeridian (180°/-180°) must be split first,
+  e.g. with `sf::st_wrap_dateline()`.
+
+## Examples
+
+### Sample from a continuous spatial domain
+
+As an example spatial domain (sampling frame) from which we want to draw
+a spatially balanced sample, we extract Ashe county from the North
+Carolina state dataset that ships with the `sf` package.
+
+We need to convert the geometries to well-known binary format to be able
+to use them as input for `sbsampling::sample_sobol()`. We also extract
+and convert the bounding box geometry to illustrate the different ways
+in which the algorithms handle the Owen-scrambled Sobol sequences that
+are generated in the bounding box.
+
+``` r
+library(sbsampling)
+nc_path <- system.file("shape/nc.shp", package = "sf")
+ashe <- sf::st_read(
+  nc_path,
+  quiet = TRUE,
+  query = "SELECT * FROM nc WHERE NAME='Ashe'"
+)
+ashe_wkb <- ashe |>
+  sf::st_geometry() |>
+  sf::st_as_binary()
+ashe_wkb <- ashe_wkb[[1]]
+ashe_bbox <- ashe |>
+  sf::st_bbox() |>
+  sf::st_as_sfc()
+ashe_bbox_wkb <- ashe_bbox |>
+  sf::st_as_binary()
+ashe_bbox_wkb <- ashe_bbox_wkb[[1]]
+```
+
+Drawing a sample using one of the Sobol sequence-based sampling
+algorithms, then proceeds as follows:
+
+``` r
+bas_sample <- sample_sobol(
+  wkb = ashe_wkb, n = 20, seed = 456, algorithm = "acceptance"
+)
+bas_sample_sf <- sf::st_as_sf(bas_sample, coords = c("lon", "lat"), crs = 4267)
+routed_sample <- sample_sobol(
+  wkb = ashe_wkb, n = 20, seed = 456, algorithm = "routing"
+)
+warped_sample <- sample_sobol(
+  wkb = ashe_wkb, n = 20, seed = 456, algorithm = "warp"
+)
+routed_sample_sf <- sf::st_as_sf(
+  routed_sample, coords = c("lon", "lat"), crs = 4267
+)
+warped_sample_sf <- sf::st_as_sf(
+  warped_sample, coords = c("lon", "lat"), crs = 4267
+)
+bbox_sample <- sample_sobol(
+  wkb = ashe_bbox_wkb,
+  n = max(bas_sample$rank) + 1,
+  seed = 456,
+  algorithm = "acceptance"
+)
+bbox_sample_sf <- sf::st_as_sf(
+  bbox_sample, coords = c("lon", "lat"), crs = 4267
+)
+```
+
+In case of the “acceptance” algorithm, a plot of the sample from Ashe
+county combined with the sample where we used the bounding box as input
+geometry (with same seed) shows that the returned `rank` has gaps:
+points are drawn in the bounding box and only those inside the polygon
+are accepted (darkgreen points are accepted, darkred points are
+rejected).
+
+<img src="man/figures/readme-plot-bas-1.png" alt="" width="100%" />
+
+Alternatively, instead of rejecting points, we can apply exact
+area-warping or -routing on the Owen scrambled Sobol-sequence to
+redistribute the points directly inside Ashe county. The `rank` now has
+no gaps because the algorithms map the sequence directly inside the
+geometry’s exact area. The redistribution of the points is much less
+severe in case of the “warp” algorithm as can be seen by the lines in
+the plot which connect the original position of the points when drawn
+from the bounding box geometry with the position after applying either
+exact-area warping or exact-area routing. Routing treats the sequence as
+a 1-D ordering along the polygon’s area, so neighbouring ranks can end
+up far apart; warp stretches the 2-D point pattern to fit the polygon,
+so it keeps the 2-D spacing much better.
+
+<img src="man/figures/readme-plot-warp-rout-1.png" alt="" width="100%" /><img src="man/figures/readme-plot-warp-rout-2.png" alt="" width="100%" />
+
+All Sobol-sequence algorithm variants result in the same sample in case
+we use the bounding box geometry as input:
+
+``` r
+bbox_sample_acceptance <- sample_sobol(
+  wkb = ashe_bbox_wkb,
+  n = 20,
+  seed = 456,
+  algorithm = "acceptance"
+)
+bbox_sample_warp <- sample_sobol(
+  wkb = ashe_bbox_wkb,
+  n = 20,
+  seed = 456,
+  algorithm = "warp"
+)
+bbox_sample_routing <- sample_sobol(
+  wkb = ashe_bbox_wkb,
+  n = 20,
+  seed = 456,
+  algorithm = "routing"
+)
+
+all.equal(
+  bbox_sample_acceptance,
+  bbox_sample_warp,
+  check.attributes = FALSE
+)
+#> [1] TRUE
+all.equal(
+  bbox_sample_acceptance,
+  bbox_sample_routing,
+  check.attributes = FALSE
+)
+#> [1] TRUE
+```
+
+The “acceptance”, “warp” and “routing” algorithms are prefix stable: a
+sample of size `n` consists of the first `n` rows of any larger sample
+drawn with the same seed from the same polygon. This allows you to
+extend a sample later (e.g. to replace unreachable sites) without
+changing the points that were already selected.
+
+``` r
+warped_10 <- sample_sobol(
+  wkb = ashe_wkb, n = 10, seed = 456, algorithm = "warp"
+)
+all.equal(
+  warped_10[, c("lon", "lat")],
+  warped_sample[1:10, c("lon", "lat")]
+)
+#> [1] TRUE
+```
+
+<img src="man/figures/readme-plot-prefix-sobol-1.png" alt="" width="100%" />
+
+Both the first 10 points and the full 20 points are spatially balanced.
+
+Only “acceptance” has the master sample property in addition to the
+prefix stability, provided that a common bounding box is used. We can
+show this by adding a neighbouring county. A sample of size 20 from Ashe
+county shares points with a sample of size 20 from the union of the
+counties.
+
+``` r
+asal <- sf::st_read(
+  nc_path,
+  quiet = TRUE,
+  query = "SELECT * FROM nc WHERE NAME IN ('Ashe', 'Alleghany')"
+)
+asal_bbox <- asal |>
+  sf::st_geometry() |>
+  sf::st_union() |>
+  sf::st_bbox()
+asal_union_wkb <- asal |>
+  sf::st_geometry() |>
+  sf::st_union() |>
+  sf::st_as_binary()
+asal_union_wkb <- asal_union_wkb[[1]]
+
+sample_ashe_within_asal_bbox <- sample_sobol(
+  wkb = ashe_wkb,
+  n = 20,
+  seed = 456,
+  master_bbox = asal_bbox,
+  algorithm = "acceptance"
+) |>
+  sf::st_as_sf(coords = c("lon", "lat"), crs = 4267)
+
+sample_asal_within_asal_bbox <- sample_sobol(
+  wkb = asal_union_wkb,
+  n = 20,
+  seed = 456,
+  master_bbox = asal_bbox,
+  algorithm = "acceptance"
+) |>
+  sf::st_as_sf(coords = c("lon", "lat"), crs = 4267)
+
+plot(asal$`_ogr_geometry_`)
+plot(sample_ashe_within_asal_bbox$geometry, pch = 22, bg = "white", add = TRUE)
+plot(sample_asal_within_asal_bbox$geometry, pch = 21, add = TRUE, cex = 0.7,
+     bg = "black")
+```
+
+<img src="man/figures/readme-plot-acceptance-master-property-1.png" alt="" width="100%" />
+
+### Sample from the H3 discrete global grid system
+
+We draw a spatially balanced sample with the aid of `sample_hex()` at
+resolution 7 of the [H3
+resolutions](https://h3geo.org/docs/core-library/restable/) system. This
+corresponds to hexagonal areas of approximately 5.16 km². The `h3o`
+package can be used to, among other things, obtain the hexagon centroid
+or vertices.
+
+The rows of the result are returned in GRTS order, i.e. by ascending
+`effective_key`: any first `k` rows are themselves a spatially balanced
+sample of size `k` with the same seed. You can therefore draw a larger
+`n` than you need and use the sample sequentially, or extend a sample
+later without changing the cells already selected.
+
+The `area_correction` argument controls the inclusion probabilities. H3
+hexagons do not all have the same area: their area varies by up to a
+factor of about 1.9 across the globe because of the icosahedral
+projection. With `area_correction = FALSE` (the default), all cells have
+the same inclusion probability `n / N`, with `N` the number of cells
+covering the study area. With `area_correction = TRUE`, sequential
+Poisson sampling is applied so that the inclusion probability is
+proportional to cell area. In both cases, the result contains the
+`area_m2` and `ip` columns, and the number of cells `N` and the total
+area as attributes (`n_cells` and `sum_area_m2`), which are needed for
+design-based estimators. For a per-area measurement `y` taken in the
+sampled cells, the Hájek estimator of the mean is
+`sum(y * area_m2 / ip) / sum(area_m2 / ip)`.
+
+``` r
+h3_sample <- sample_hex(
+  wkb = ashe_wkb,
+  n = 20,
+  resolution = 7,
+  containment = "centroid",
+  seed = 123,
+  area_correction = FALSE
+)
+h3_sample$geom_points <- h3_sample$cell |>
+  h3o::h3_from_strings() |>
+  h3o::h3_to_points()
+h3_sample$geom_hexagons <- h3_sample$cell |>
+  h3o::h3_from_strings() |> 
+  h3o::h3_to_vertexes() |>
+  sf::st_cast("POLYGON")
+```
+
+We can visualise the selected spatially balanced sample and the H3
+cells:
+
+``` r
+ashe_cells <- h3o::sfc_to_cells(
+  ashe$`_ogr_geometry_`,
+  resolution = 7,
+  containment = "centroid"
+)
+ashe_hexagons <- h3o::h3_to_vertexes(ashe_cells[[1]]) |>
+  sf::st_cast("POLYGON")
+plot(ashe$`_ogr_geometry_`)
+plot(ashe_hexagons, add = TRUE)
+plot(h3_sample$geom_hexagons, col = "lightgreen", add = TRUE)
+plot(h3_sample$geom_hexagons[1:10], col = "darkgreen", add = TRUE)
+plot(h3_sample$geom_points, add = TRUE, cex = 0.3)
+legend(
+  "bottomright", legend = c("first 10", "next 10"), pch = 15,
+  col = c("darkgreen", "lightgreen"), bty = "n", cex = 0.8
+)
+```
+
+<img src="man/figures/readme-plot-example-h3-1.png" alt="" width="100%" />
+
+Drawing a smaller sample with the same seed yields the first rows of the
+larger sample:
+
+``` r
+h3_sample_10 <- sample_hex(
+  wkb = ashe_wkb,
+  n = 10,
+  resolution = 7,
+  containment = "centroid",
+  seed = 123
+)
+all.equal(h3_sample_10$cell, h3_sample$cell[1:10])
+#> [1] TRUE
+```
+
+If you draw many samples from the same study area (e.g. in simulations),
+the tessellation can be computed once with `get_coverage_hex()` and
+passed to `sample_hex()` via the `cells` argument:
+
+``` r
+ashe_coverage <- get_coverage_hex(
+  wkb = ashe_wkb, resolution = 7, containment = "centroid"
+)
+h3_sample_cells <- sample_hex(cells = ashe_coverage, n = 20, seed = 123)
+all.equal(h3_sample$cell, h3_sample_cells$cell)
+#> [1] TRUE
+```
+
+[^1]: author
