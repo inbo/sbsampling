@@ -412,11 +412,11 @@ all.equal(h3_sample_10$cell, h3_sample$cell[1:10])
 ```
 
 If you draw many samples from the same study area (e.g. in simulations),
-the tessellation can be computed once with `h3_get_coverage()` and
+the tessellation can be computed once with `get_coverage_hex()` and
 passed to `grts_h3()` via the `cells` argument:
 
 ``` r
-ashe_coverage <- h3_get_coverage(
+ashe_coverage <- get_coverage_hex(
   wkb = ashe_wkb, resolution = 7, containment = "centroid"
 )
 h3_sample_cells <- grts_h3(cells = ashe_coverage, n = 20, seed = 123)

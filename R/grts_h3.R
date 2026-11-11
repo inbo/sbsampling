@@ -12,7 +12,7 @@
 #' @param wkb Raw byte vector representing Well-Known Binary (WKB) geometry in
 #' WGS84 (EPSG:4326).
 #' @param cells Raw byte vector of pre-computed H3 cell indices, all at the
-#'  same resolution. Use `h3_get_coverage()` to generate them. Invalid indices
+#'  same resolution. Use `get_coverage_hex()` to generate them. Invalid indices
 #'  or mixed resolutions are an error; duplicates are removed with a warning.
 #'  If provided, `wkb`, `resolution`, and `containment` are ignored.
 #' @param n Integer. The target number of sample locations to draw.

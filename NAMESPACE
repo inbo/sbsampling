@@ -3,6 +3,6 @@
 export(bas_sobol)
 export(grts_h3)
 export(grts_sobol)
-export(h3_get_coverage)
+export(get_coverage_hex)
 export(sample_sobol)
 useDynLib(sbsampling, .registration = TRUE)

@@ -256,7 +256,7 @@ test_that("res-15 sort keys are pinned across base cells and a pentagon", {
 
 test_that("sort keys do not depend on the other cells or on input order", {
   skip_if_not_installed("sf")
-  cov <- h3_get_coverage(create_test_wkb(), resolution = 5)
+  cov <- get_coverage_hex(create_test_wkb(), resolution = 5)
   m <- matrix(cov, nrow = 8)             # one H3 index (8 raw bytes) per column
   n_all <- ncol(m)
   full <- grts_h3(cells = cov, n = n_all, seed = 42)

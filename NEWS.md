@@ -2,7 +2,7 @@
 
 * Added `sample_sobol()` for Sobol sequence based spatially balanced sampling
   from continuous spatial domains.
-* Added `h3_get_coverage()` to pre-compute H3 cell indices covering an input
+* Added `get_coverage_hex()` to pre-compute H3 cell indices covering an input
   geometry.
 * Added `grts_h3()` for spatially balanced sampling from H3 discrete global
   grid.

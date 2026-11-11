@@ -19,7 +19,7 @@ grts_h3(
 WGS84 (EPSG:4326).}
 
 \item{cells}{Raw byte vector of pre-computed H3 cell indices, all at the
-same resolution. Use \code{h3_get_coverage()} to generate them. Invalid indices
+same resolution. Use \code{get_coverage_hex()} to generate them. Invalid indices
 or mixed resolutions are an error; duplicates are removed with a warning.
 If provided, \code{wkb}, \code{resolution}, and \code{containment} are ignored.}
 

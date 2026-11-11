@@ -21,7 +21,7 @@ test_that("WKB and cells pathways produce identical samples", {
     seed        = seed
   )
 
-  coverage_bytes <- h3_get_coverage(
+  coverage_bytes <- get_coverage_hex(
     wkb         = wkb,
     resolution  = res,
     containment = "centroid"
@@ -56,7 +56,7 @@ test_that("cells pathway: sort keys for shared cells match the WKB pathway", {
     wkb, n = 5, resolution = 4,
     containment = "centroid", seed = seed
   )
-  coverage_bytes <- h3_get_coverage(
+  coverage_bytes <- get_coverage_hex(
     wkb, resolution = 4, containment = "centroid"
   )
   out_cells <- grts_h3(cells = coverage_bytes, n = 5, seed = seed)
